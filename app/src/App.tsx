@@ -1,5 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
+import { RequireAuth } from "./components/layout/RequireAuth";
+import Login from "./pages/Login";
+import type { Role } from "./data/types";
 import Landing from "./pages/Landing";
 import CustomerHome from "./pages/customer/Home";
 import Shop from "./pages/customer/Shop";
@@ -14,24 +17,29 @@ import Tickets from "./pages/admin/Tickets";
 import Customers from "./pages/admin/Customers";
 import Quality from "./pages/admin/Quality";
 
-const shell = (el: JSX.Element) => <AppShell>{el}</AppShell>;
+const shell = (role: Role, el: JSX.Element) => (
+  <RequireAuth role={role}>
+    <AppShell>{el}</AppShell>
+  </RequireAuth>
+);
 
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
-      <Route path="/customer" element={shell(<CustomerHome />)} />
-      <Route path="/customer/shop" element={shell(<Shop />)} />
-      <Route path="/customer/wallet" element={shell(<WalletPage />)} />
-      <Route path="/customer/history" element={shell(<Bills />)} />
-      <Route path="/customer/help" element={shell(<Help />)} />
-      <Route path="/rider" element={shell(<RiderRound />)} />
-      <Route path="/rider/summary" element={shell(<RiderSummary />)} />
-      <Route path="/admin" element={shell(<AdminOverview />)} />
-      <Route path="/admin/routes" element={shell(<LiveRoutes />)} />
-      <Route path="/admin/tickets" element={shell(<Tickets />)} />
-      <Route path="/admin/customers" element={shell(<Customers />)} />
-      <Route path="/admin/quality" element={shell(<Quality />)} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/customer" element={shell("customer", <CustomerHome />)} />
+      <Route path="/customer/shop" element={shell("customer", <Shop />)} />
+      <Route path="/customer/wallet" element={shell("customer", <WalletPage />)} />
+      <Route path="/customer/history" element={shell("customer", <Bills />)} />
+      <Route path="/customer/help" element={shell("customer", <Help />)} />
+      <Route path="/rider" element={shell("rider", <RiderRound />)} />
+      <Route path="/rider/summary" element={shell("rider", <RiderSummary />)} />
+      <Route path="/admin" element={shell("admin", <AdminOverview />)} />
+      <Route path="/admin/routes" element={shell("admin", <LiveRoutes />)} />
+      <Route path="/admin/tickets" element={shell("admin", <Tickets />)} />
+      <Route path="/admin/customers" element={shell("admin", <Customers />)} />
+      <Route path="/admin/quality" element={shell("admin", <Quality />)} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

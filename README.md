@@ -8,6 +8,18 @@ An interactive product prototype for **Cowland Daily**, a dawn A2-milk subscript
 
 Actions flow between portals: a customer's report lands in the hub's ticket queue, a hub refund appears in the customer's wallet, and a rider's delivery moves the hub's route map.
 
+## Sign-in
+
+Each portal has its own sign-in at `/#/login`, and a signed-in person only sees their own portal.
+
+| Account | How they sign in | Demo login |
+|---|---|---|
+| Customer (Aditi Deshmukh) | Mobile number + one-time code | 98220 41567, code 1234 |
+| Rider (Ganesh Shinde) | Rider ID + PIN | CD-R04, PIN 4404 |
+| Hub staff (Mahesh Kale) | Work email + password | mahesh@cowlanddaily.in, dawn2026 |
+
+This is a static prototype, so credentials are checked in the browser. A real launch would verify them on a server (SMS OTP gateway, hashed PINs and passwords, server sessions).
+
 ## Live site
 
 https://adarsh-panadath.github.io/cowland-daily/

@@ -140,7 +140,7 @@ export function ReportModal({ open, onClose }: { open: boolean; onClose: () => v
       {sent ? (
         <div className="py-4">
           <p className="text-ink-soft">The hub team has your report and will reply within 30 minutes. If a refund is due it goes straight to your wallet.</p>
-          <p className="mt-4 rounded-xl bg-milk p-3 text-sm">Tip: open the <b>Hub team</b> portal and look under Tickets to see it arrive.</p>
+          <p className="mt-4 rounded-xl bg-milk p-3 text-sm">Demo tip: sign out, then sign in as <b>hub staff</b> and open Tickets to see your report arrive.</p>
         </div>
       ) : (
         <div className="space-y-5">

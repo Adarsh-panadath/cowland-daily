@@ -24,6 +24,7 @@ export const kindLabel: Record<ExceptionKind, string> = {
 
 interface State {
   role: Role;
+  session: Role | null;
   customers: Customer[];
   stops: Stop[];
   exceptions: Exception[];
@@ -35,6 +36,8 @@ interface State {
   seedDay: string;
 
   setRole: (r: Role) => void;
+  signIn: (r: Role) => void;
+  signOut: () => void;
 
   // customer
   setDayStatus: (date: string, status: DayStatus) => void;
@@ -67,6 +70,7 @@ interface State {
 
 const fresh = () => ({
   role: "customer" as Role,
+  session: null as Role | null,
   customers: structuredClone(seedCustomers),
   stops: structuredClone(seedStops),
   exceptions: structuredClone(seedExceptions),
@@ -103,6 +107,8 @@ export const useStore = create<State>()(
       ...fresh(),
 
       setRole: (role) => set({ role }),
+      signIn: (role) => set({ session: role, role }),
+      signOut: () => set({ session: null, simOn: false }),
 
       setDayStatus: (date, status) =>
         set((s) => ({ overrides: { ...s.overrides, [date]: { ...s.overrides[date], status } } })),
@@ -272,7 +278,7 @@ export const useStore = create<State>()(
 
       markRead: (role) => set((s) => ({ notices: s.notices.map((n) => (n.role === role ? { ...n, read: true } : n)) })),
 
-      reset: () => set({ ...fresh(), role: get().role }),
+      reset: () => set({ ...fresh(), role: get().role, session: get().session }),
     }),
     {
       name: "cowland-daily-demo",

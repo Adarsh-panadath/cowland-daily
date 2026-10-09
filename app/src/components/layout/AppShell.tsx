@@ -3,15 +3,15 @@ import { NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
   Bell, CalendarDays, ShoppingBasket, Wallet, ReceiptText, LifeBuoy, Route as RouteIcon, BarChart3,
-  LayoutDashboard, Users, TriangleAlert, FlaskConical, RotateCcw, Truck, Home, X, CheckCircle2, Info,
+  LayoutDashboard, Users, TriangleAlert, FlaskConical, RotateCcw, Truck, Home, X, CheckCircle2, Info, LogOut, ChevronDown,
 } from "lucide-react";
-import { useStore, useMe } from "../../store/useStore";
+import { useStore } from "../../store/useStore";
+import { accounts } from "../../lib/auth";
 import { useToast } from "../../store/toast";
 import type { Role } from "../../data/types";
-import { riderById, routeById } from "../../data/seed";
 import { Avatar, Badge } from "../ui";
 import { Logo } from "../Logo";
-import { initials, timeAgo } from "../../lib/format";
+import { timeAgo } from "../../lib/format";
 
 type NavItem = { to: string; label: string; short?: string; icon: ReactNode; end?: boolean };
 
@@ -65,66 +65,63 @@ function LiveClock() {
   );
 }
 
-export function RoleSwitch({ compact }: { compact?: boolean }) {
-  const role = useStore((s) => s.role);
-  const setRole = useStore((s) => s.setRole);
-  const navigate = useNavigate();
+function Who({ role }: { role: Role }) {
+  const acc = accounts[role];
   return (
-    <div className={clsx("grid grid-cols-3 rounded-xl bg-white/10 p-1", compact && "bg-milk-2")} role="tablist" aria-label="Switch portal">
-      {(Object.keys(roleMeta) as Role[]).map((r) => (
-        <button
-          key={r}
-          role="tab"
-          aria-selected={role === r}
-          onClick={() => {
-            setRole(r);
-            navigate(roleMeta[r].home);
-          }}
-          className={clsx(
-            "rounded-lg px-2 py-1.5 text-[13px] font-semibold transition",
-            compact
-              ? role === r ? "bg-white text-ink shadow-sm" : "text-ink-soft"
-              : role === r ? "bg-white text-ink" : "text-white/70 hover:text-white",
-          )}
-        >
-          {roleMeta[r].label}
-        </button>
-      ))}
+    <div className="flex items-center gap-3">
+      <Avatar text={acc.initials} color={acc.color} />
+      <div className="min-w-0 leading-tight">
+        <p className="truncate font-semibold text-white">{acc.name}</p>
+        <p className="truncate text-xs text-white/60">{acc.sub}</p>
+      </div>
     </div>
   );
 }
 
-function Who({ role }: { role: Role }) {
-  const me = useMe();
-  if (role === "customer")
-    return (
-      <div className="flex items-center gap-3">
-        <Avatar text="AD" color="#F2A900" />
-        <div className="min-w-0 leading-tight">
-          <p className="truncate font-semibold text-white">{me.contact}</p>
-          <p className="truncate text-xs text-white/60">{me.flat}, {me.society}</p>
-        </div>
-      </div>
-    );
-  if (role === "rider") {
-    const r = riderById["rd4"]!;
-    return (
-      <div className="flex items-center gap-3">
-        <Avatar text={initials(r.name)} color="#2F7D5B" />
-        <div className="min-w-0 leading-tight">
-          <p className="truncate font-semibold text-white">{r.name}</p>
-          <p className="truncate text-xs text-white/60">Route {routeById["r4"]!.code}, {r.vehicle}</p>
-        </div>
-      </div>
-    );
-  }
+function AccountMenu({ role }: { role: Role }) {
+  const acc = accounts[role];
+  const signOut = useStore((s) => s.signOut);
+  const reset = useStore((s) => s.reset);
+  const nav = useNavigate();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", esc);
+    return () => { window.removeEventListener("mousedown", close); window.removeEventListener("keydown", esc); };
+  }, [open]);
+  const out = () => { signOut(); nav("/login?role=" + role, { replace: true }); };
   return (
-    <div className="flex items-center gap-3">
-      <Avatar text="MK" color="#6C8EF5" />
-      <div className="min-w-0 leading-tight">
-        <p className="truncate font-semibold text-white">Mahesh Kale</p>
-        <p className="truncate text-xs text-white/60">Dispatch lead, Samarth Nagar hub</p>
-      </div>
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} className="flex items-center gap-2 rounded-xl py-1 pl-1 pr-2 hover:bg-milk-2">
+        <Avatar text={acc.initials} color={acc.color} size={34} />
+        <span className="hidden text-left leading-tight md:block">
+          <span className="block text-sm font-semibold text-ink">{acc.name}</span>
+          <span className="block text-xs text-ink-soft">{acc.label}</span>
+        </span>
+        <ChevronDown size={16} className={clsx("hidden text-ink-soft transition md:block", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 top-12 z-50 w-72 animate-rise rounded-2xl bg-white p-2 shadow-pop">
+          <div className="flex items-center gap-3 rounded-xl bg-milk p-3">
+            <Avatar text={acc.initials} color={acc.color} size={40} />
+            <div className="min-w-0 leading-tight">
+              <p className="truncate font-semibold text-ink">{acc.name}</p>
+              <p className="truncate text-xs text-ink-soft">{acc.sub}</p>
+              <p className="mt-1 truncate text-xs text-ink-3">{role === "customer" ? "+91 98220 41567" : acc.id}</p>
+            </div>
+          </div>
+          <button role="menuitem" onClick={() => { reset(); setOpen(false); }} className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-ink hover:bg-milk">
+            <RotateCcw size={16} className="text-ink-soft" /> Reset demo data
+          </button>
+          <button role="menuitem" onClick={out} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-brick hover:bg-brick-soft">
+            <LogOut size={16} /> Sign out
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -204,19 +201,16 @@ function Toaster() {
 
 export function AppShell({ children }: { children: ReactNode }) {
   useSimulation();
-  const role = useStore((s) => s.role);
-  const setRole = useStore((s) => s.setRole);
-  const reset = useStore((s) => s.reset);
+  const role = useStore((s) => s.session) ?? "customer";
+  const signOut = useStore((s) => s.signOut);
+  const go = useNavigate();
   const loc = useLocation();
   const items = nav[role];
   const simOn = useStore((s) => s.simOn);
 
-  // keep role in sync with the URL (deep links, back button)
   useEffect(() => {
-    const seg = loc.pathname.split("/")[1] as Role;
-    if (seg && seg in roleMeta && seg !== role) setRole(seg);
     window.scrollTo({ top: 0 });
-  }, [loc.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loc.pathname]);
 
   const current = items.find((i) => (i.end ? loc.pathname === i.to : loc.pathname.startsWith(i.to))) ?? items[0]!;
 
@@ -227,8 +221,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Link to="/" className="mb-6 flex items-center gap-2.5 px-2" aria-label="Cowland Daily home">
           <Logo light />
         </Link>
-        <RoleSwitch />
-        <div className="mt-5 rounded-2xl bg-white/[.06] p-3">
+        <div className="rounded-2xl bg-white/[.06] p-3">
+          <p className="mb-2 text-xs font-semibold text-white/50">{accounts[role].label} account</p>
           <Who role={role} />
         </div>
         <nav className="mt-5 flex flex-col gap-1" aria-label={`${roleMeta[role].label} navigation`}>
@@ -254,8 +248,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           )}
           <p className="px-1 text-xs leading-relaxed text-white/50">Prototype with sample data. Changes are saved in this browser.</p>
-          <button onClick={reset} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-white/70 hover:bg-white/[.07] hover:text-white">
-            <RotateCcw size={16} /> Reset demo data
+          <button onClick={() => { signOut(); go("/login?role=" + role, { replace: true }); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-white/70 hover:bg-white/[.07] hover:text-white">
+            <LogOut size={16} /> Sign out
           </button>
         </div>
       </aside>
@@ -268,11 +262,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <p className="truncate font-display text-lg font-semibold text-ink lg:text-xl">{current.label}</p>
             <p className="hidden text-xs text-ink-soft sm:block"><LiveClock /></p>
           </div>
-          <div className="hidden sm:block lg:hidden"><RoleSwitch compact /></div>
           {simOn && <Badge tone="good" dot className="hidden sm:inline-flex lg:hidden">Live</Badge>}
           <Notifications role={role} />
+          <AccountMenu role={role} />
         </div>
-        <div className="px-4 pb-3 sm:hidden"><RoleSwitch compact /></div>
       </header>
 
       <main className="mx-auto max-w-[1240px] px-4 pb-28 pt-5 sm:px-6 lg:pb-12 lg:pt-7">{children}</main>

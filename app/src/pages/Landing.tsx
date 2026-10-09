@@ -7,7 +7,8 @@ import { ProductArt } from "../components/ProductArt";
 import { products, routes, seedCustomers } from "../data/seed";
 import { useStore } from "../store/useStore";
 import { inr } from "../lib/format";
-import { Button, Stepper } from "../components/ui";
+import { Avatar, Button, Stepper } from "../components/ui";
+import { accounts } from "../lib/auth";
 import type { Role } from "../data/types";
 
 const onRoute = (r: string) => seedCustomers.filter((c) => c.routeId === r).length;
@@ -21,11 +22,11 @@ const areas = [
 ];
 
 function useOpen() {
-  const setRole = useStore((s) => s.setRole);
+  const session = useStore((s) => s.session);
   const nav = useNavigate();
   return (r: Role) => {
-    setRole(r);
-    nav(r === "customer" ? "/customer" : r === "rider" ? "/rider" : "/admin");
+    if (session === r) nav(accounts[r].home);
+    else nav(`/login?role=${r}`);
   };
 }
 
@@ -50,7 +51,7 @@ export default function Landing() {
             <a href="#areas" className="hover:text-white">Areas</a>
             <a href="#prototype" className="hover:text-white">Inside the app</a>
           </nav>
-          <Button variant="accent" onClick={() => open("customer")}>Open the app</Button>
+          <HeaderAccount />
         </div>
       </header>
 
@@ -115,7 +116,7 @@ export default function Landing() {
             <h2 className="font-display text-4xl font-bold tracking-tight">What comes in the crate</h2>
             <p className="mt-3 text-ink-soft">Everything is made from the same morning's milk, or the day before for dahi and paneer. Prices include delivery.</p>
           </div>
-          <Link to="/customer/shop" onClick={() => useStore.getState().setRole("customer")} className="inline-flex items-center gap-1 font-semibold text-ink underline decoration-marigold decoration-2 underline-offset-4">
+          <Link to="/customer/shop" className="inline-flex items-center gap-1 font-semibold text-ink underline decoration-marigold decoration-2 underline-offset-4">
             See the full shop <ArrowUpRight size={16} />
           </Link>
         </div>
@@ -202,7 +203,7 @@ export default function Landing() {
       <section id="prototype" className="mx-auto max-w-[1200px] px-5 py-20">
         <div className="max-w-2xl">
           <h2 className="font-display text-4xl font-bold tracking-tight">One morning, three apps</h2>
-          <p className="mt-3 text-ink-soft">This prototype runs on shared sample data. Report a missing bottle as a customer and it lands in the hub's ticket queue. Mark a drop as delivered in the rider app and the family's wallet updates.</p>
+          <p className="mt-3 text-ink-soft">Each app has its own sign-in, and all three share the same sample data. Report a missing bottle as a customer and it lands in the hub's ticket queue. Mark a drop as delivered in the rider app and the family's wallet updates. Demo logins are shown on the sign-in screen.</p>
         </div>
         <div className="mt-10 grid gap-5 lg:grid-cols-3">
           {[
@@ -215,7 +216,7 @@ export default function Landing() {
               <span className="mt-5 font-display text-2xl font-semibold">{x.t}</span>
               <span className="mt-0.5 text-sm font-medium text-ink-3">{x.who}</span>
               <span className="mt-3 text-sm leading-relaxed text-ink-soft">{x.b}</span>
-              <span className="mt-6 inline-flex items-center gap-1 font-semibold text-ink">Open {x.t.toLowerCase()} <ArrowUpRight size={16} className="transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" /></span>
+              <span className="mt-6 inline-flex items-center gap-1 font-semibold text-ink">Sign in to the {x.t.toLowerCase()} <ArrowUpRight size={16} className="transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" /></span>
             </button>
           ))}
         </div>
@@ -239,6 +240,26 @@ function Progress60({ value }: { value: number }) {
     <div className="mt-4">
       <div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-marigold" style={{ width: `${Math.min(100, (value / 60) * 100)}%` }} /></div>
       <p className="mt-2 text-xs text-white/60">{value} of 60 needed</p>
+    </div>
+  );
+}
+
+function HeaderAccount() {
+  const session = useStore((s) => s.session);
+  const nav = useNavigate();
+  if (session) {
+    const a = accounts[session];
+    return (
+      <button onClick={() => nav(a.home)} className="flex items-center gap-2.5 rounded-xl bg-white/10 py-1.5 pl-1.5 pr-4 text-left text-white hover:bg-white/15">
+        <Avatar text={a.initials} color={a.color} size={32} />
+        <span className="leading-tight"><span className="block text-sm font-semibold">Go to my app</span><span className="block text-xs text-white/60">{a.name}</span></span>
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <Link to="/login" className="hidden rounded-xl px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 sm:block">Sign in</Link>
+      <Button variant="accent" onClick={() => nav("/login?role=customer")}>Get started</Button>
     </div>
   );
 }
