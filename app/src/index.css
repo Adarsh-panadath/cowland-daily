@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body { @apply bg-milk font-sans text-ink antialiased; font-feature-settings: "tnum" 0; }
+  ::selection { background: #FFE08A; color: #14213D; }
+  :focus-visible { outline: 2px solid #F2A900; outline-offset: 2px; border-radius: 8px; }
+  h1, h2, h3 { text-wrap: balance; }
+  p { text-wrap: pretty; }
+}
+
+@layer utilities {
+  .tabular { font-variant-numeric: tabular-nums; }
+  .scrollbar-none { scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  /* perforated edge for the paavti (milk chit) */
+  .perforation {
+    background-image: radial-gradient(circle at 8px 0, transparent 7px, #fff 7.5px);
+    background-size: 16px 100%;
+    background-position: -8px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+/* Recharts tidy-ups */
+.recharts-cartesian-axis-tick-value { font-size: 12px; fill: #6B7591; }
+.recharts-tooltip-wrapper { outline: none; }
