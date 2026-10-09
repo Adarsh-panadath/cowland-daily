@@ -61,6 +61,7 @@ export default function LiveRoutes() {
   const [sel, setSel] = useState("r4");
   const [picked, setPicked] = useState<string | null>(null);
   const [calling, setCalling] = useState(false);
+  const shift = useStore((s) => s.shift);
   const cur = rs.find((r) => r.route.id === sel)!;
   const rider = riderById[cur.route.riderId]!;
   const rStops = stops.filter((s) => s.routeId === sel).sort((a, b) => a.seq - b.seq);
@@ -118,6 +119,12 @@ export default function LiveRoutes() {
               <div className="rounded-xl bg-milk p-3"><dt className="flex items-center gap-1 text-ink-soft"><Thermometer size={13} /> Crate</dt><dd className="font-display text-xl font-bold">{cur.route.tempC}°C</dd></div>
               <div className="rounded-xl bg-milk p-3"><dt className="flex items-center gap-1 text-ink-soft"><Clock3 size={13} /> Window</dt><dd className="font-semibold">{cur.route.window}</dd></div>
             </dl>
+            {cur.route.id === "r4" && (
+              <ul className="mt-3 space-y-1.5 text-sm">
+                <li className="flex justify-between"><span className="text-ink-soft">Crate check</span><span className="font-semibold">{shift.loadedAt ? `${clock(shift.loadedAt)}, ${shift.short.length ? `${shift.short.length} item${shift.short.length > 1 ? "s" : ""} short` : "full"}` : "Not loaded yet"}</span></li>
+                <li className="flex justify-between"><span className="text-ink-soft">Handover</span><span className="font-semibold">{shift.handedOverAt ? `${clock(shift.handedOverAt)}, ${shift.returnedBottles} bottles` : "Still on route"}</span></li>
+              </ul>
+            )}
             <Progress className="mt-4" value={(cur.litresDone / cur.litresPlanned) * 100} color={cur.route.color} />
             <p className="mt-1.5 text-xs text-ink-soft">{cur.litresDone.toFixed(1)} of {cur.litresPlanned.toFixed(1)} litres delivered</p>
           </Card>

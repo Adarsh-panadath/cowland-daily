@@ -25,6 +25,20 @@ export const kindLabel: Record<ExceptionKind, string> = {
 
 export type RiderLang = "en" | "mr" | "hi";
 
+export interface RiderShift {
+  loadedAt: string | null;
+  checked: Record<string, boolean>;
+  short: string[];
+  handedOverAt: string | null;
+  returnedBottles: number | null;
+}
+
+const atToday = (h: number, m: number) => {
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
+};
+
 interface State {
   role: Role;
   session: Role | null;
@@ -42,6 +56,7 @@ interface State {
   remindedAt: string | null;
   planned: Record<string, boolean>;
   riderLang: RiderLang;
+  shift: RiderShift;
 
   setRole: (r: Role) => void;
   signIn: (r: Role) => void;
@@ -77,6 +92,10 @@ interface State {
   remindLowBalances: (ids: string[]) => void;
   togglePlanned: (id: string) => void;
   setRiderLang: (l: RiderLang) => void;
+  toggleLoadItem: (productId: string) => void;
+  confirmLoad: (short: string[]) => void;
+  handover: (returned: number) => void;
+  startNewShift: () => void;
   markRead: (role: Role) => void;
   reset: () => void;
 }
@@ -101,6 +120,7 @@ const fresh = () => ({
   remindedAt: null as string | null,
   planned: {} as Record<string, boolean>,
   riderLang: "en" as RiderLang,
+  shift: { loadedAt: atToday(4, 41), checked: {}, short: [], handedOverAt: null, returnedBottles: null } as RiderShift,
 });
 
 /** Keep the demo on a coherent dawn timeline: each new drop lands 2–3 minutes after the route's last one. */
@@ -312,13 +332,48 @@ export const useStore = create<State>()(
       togglePlanned: (id) => set((s) => ({ planned: { ...s.planned, [id]: !s.planned[id] } })),
       setRiderLang: (riderLang) => set({ riderLang }),
 
+      toggleLoadItem: (pid) => set((s) => ({ shift: { ...s.shift, checked: { ...s.shift.checked, [pid]: !s.shift.checked[pid] } } })),
+
+      confirmLoad: (short) =>
+        set((s) => ({
+          shift: { ...s.shift, loadedAt: atToday(4, 40 + Math.floor(Math.random() * 6)), short },
+          notices: short.length
+            ? [notice("admin", `Route 04 left the hub short: ${short.map((id) => productById[id]?.name ?? id).join(", ")}. Send a top-up with the 5:30 runner.`, "warn"), ...s.notices]
+            : [notice("admin", "Route 04 crate checked and loaded in full.", "good"), ...s.notices],
+        })),
+
+      handover: (returned) =>
+        set((s) => {
+          const r4 = s.stops.filter((x) => x.routeId === "r4");
+          const collected = r4.reduce((a, x) => a + x.bottlesCollected, 0);
+          const last = r4.map((x) => x.at).filter(Boolean).sort().at(-1);
+          const at = new Date((last ? new Date(last).getTime() : Date.now()) + 16 * 60000).toISOString();
+          const gap = collected - returned;
+          return {
+            shift: { ...s.shift, handedOverAt: at, returnedBottles: returned },
+            notices: [notice("admin", `Ganesh (Route 04) handed over ${returned} empty bottles${gap > 0 ? `, ${gap} fewer than collected` : ""}.`, gap > 0 ? "warn" : "good"), ...s.notices],
+          };
+        }),
+
+      startNewShift: () =>
+        set((s) => {
+          const refunds = new Map<string, number>();
+          for (const x of s.stops) if (x.routeId === "r4" && x.status === "delivered") refunds.set(x.customerId, lineTotal(x.items));
+          return {
+            stops: s.stops.map((x) => (x.routeId === "r4" ? { ...x, status: "pending" as const, at: undefined, bottlesCollected: 0, issueNote: undefined, confirmed: false } : x)),
+            customers: s.customers.map((c) => (refunds.has(c.id) ? { ...c, wallet: c.wallet + refunds.get(c.id)! } : c)),
+            txns: refunds.has(ME) ? [{ id: uid("t"), customerId: ME, at: new Date().toISOString(), kind: "refund" as const, amount: refunds.get(ME)!, note: "Today's delivery restarted (demo)" }, ...s.txns] : s.txns,
+            shift: { loadedAt: null, checked: {}, short: [], handedOverAt: null, returnedBottles: null },
+          };
+        }),
+
       markRead: (role) => set((s) => ({ notices: s.notices.map((n) => (n.role === role ? { ...n, read: true } : n)) })),
 
       reset: () => set({ ...fresh(), role: get().role, session: get().session, riderLang: get().riderLang }),
     }),
     {
       name: "cowland-daily-demo",
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => {
         const { simOn: _simOn, ...rest } = s;

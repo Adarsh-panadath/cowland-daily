@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
-import { Check, Phone, MapPin, TriangleAlert, Volume2, Minus, Plus, DoorClosed, PackageX, Hand, MapPinOff, List, X, Undo2, Megaphone, PartyPopper } from "lucide-react";
+import { Check, Phone, MapPin, TriangleAlert, Volume2, Minus, Plus, DoorClosed, PackageX, Hand, MapPinOff, List, X, Undo2, Megaphone, PartyPopper, PackageCheck, Truck, Warehouse, Clock3, Recycle, Wallet } from "lucide-react";
 import { useStore, type RiderLang } from "../../store/useStore";
-import { productById } from "../../data/seed";
+import { productById, products } from "../../data/seed";
 import type { Customer, ExceptionKind, Stop } from "../../data/types";
 import { ProductArt } from "../../components/ProductArt";
 import { CallSheet } from "../../components/CallSheet";
@@ -58,6 +58,9 @@ export default function RiderRound() {
   const [problemFor, setProblemFor] = useState<Stop | null>(null);
   const [listOpen, setListOpen] = useState(false);
   const [calling, setCalling] = useState<{ name: string; sub?: string } | null>(null);
+  const [crateOpen, setCrateOpen] = useState(false);
+  const shift = useStore((s) => s.shift);
+  const startNewShift = useStore((s) => s.startNewShift);
 
   const cust = (id: string) => customers.find((c) => c.id === id)!;
   const pending = stops.filter((s) => s.status === "pending");
@@ -66,6 +69,19 @@ export default function RiderRound() {
   const c = next ? cust(next.customerId) : null;
   const got = stops.reduce((s, x) => s + x.bottlesCollected, 0);
   const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window;
+  const issues = stops.filter((s) => s.status === "issue").length;
+  const delivered = stops.filter((s) => s.status === "delivered").length;
+
+  // Route clock: the time of the last drop (or leaving the hub), projected forward at ~2.6 min a home.
+  const lastAt = stops.map((s) => s.at).filter(Boolean).sort().at(-1);
+  const clockMin = (() => {
+    const d = lastAt ? new Date(lastAt) : shift.loadedAt ? new Date(new Date(shift.loadedAt).getTime() + 32 * 60000) : null;
+    return d ? d.getHours() * 60 + d.getMinutes() : 315;
+  })();
+  const finishMin = Math.round(clockMin + pending.length * 2.6);
+  const slack = 375 - finishMin;
+  const hhmm = (m: number) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+
 
   const speak = () => {
     if (!c || !next) return;
@@ -101,14 +117,32 @@ export default function RiderRound() {
         </div>
       )}
 
-      {/* Progress */}
-      <div className="rounded-3xl bg-ink p-5 text-white">
-        <div className="flex items-end justify-between">
-          <p><span className="font-display text-5xl font-bold tabular">{handled}</span><span className="text-2xl text-white/50">/{stops.length}</span> <span className="text-white/70">{tr("homes", lang)} {tr("done", lang)}</span></p>
-          <p className="text-right"><span className="font-display text-3xl font-bold tabular text-marigold">{pending.length}</span><span className="block text-sm text-white/70">{tr("left", lang)}</span></p>
-        </div>
-        <div className="mt-3 h-4 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-marigold transition-[width] duration-700" style={{ width: `${(handled / stops.length) * 100}%` }} /></div>
-      </div>
+      <ShiftSteps lang={lang} loaded={!!shift.loadedAt} loadedAt={shift.loadedAt} done={handled} total={stops.length} returned={!!shift.handedOverAt} short={shift.short.length} onLoad={() => setCrateOpen(true)} />
+
+      {!shift.loadedAt ? (
+        <LoadCrate lang={lang} stops={stops} />
+      ) : (
+      <>
+      {pending.length > 0 && (
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <Counter icon={<Check size={22} strokeWidth={3} />} value={delivered} label={tr("doneShort", lang)} tone="good" />
+            <Counter icon={<Truck size={22} />} value={pending.length} label={tr("leftShort", lang)} tone="ink" />
+            <Counter icon={<TriangleAlert size={22} />} value={issues} label={tr("problemShort", lang)} tone={issues ? "bad" : "muted"} />
+          </div>
+          <div className={clsx("flex items-center gap-4 rounded-3xl p-4", slack >= 5 ? "bg-neem-soft" : slack >= 0 ? "bg-marigold-soft" : "bg-brick-soft")}>
+            <span className={clsx("grid h-14 w-14 shrink-0 place-items-center rounded-2xl text-white", slack >= 5 ? "bg-neem" : slack >= 0 ? "bg-marigold-deep" : "bg-brick")}><Clock3 size={28} /></span>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold">{tr("finishBy", lang)}</p>
+              <p className="text-sm text-ink-3">{tr("atThisSpeed", lang)} <b className="tabular text-ink">{hhmm(finishMin)}</b></p>
+            </div>
+            <div className="text-right">
+              <p className={clsx("font-display text-3xl font-bold tabular", slack >= 5 ? "text-neem-deep" : slack >= 0 ? "text-marigold-deep" : "text-brick")}>{Math.abs(slack)}</p>
+              <p className="text-xs font-semibold text-ink-3">{slack >= 0 ? tr("minLeft", lang) : tr("minLate", lang)}</p>
+            </div>
+          </div>
+        </>
+      )}
 
       {next && c ? (
         <div className="overflow-hidden rounded-3xl bg-white shadow-lift">
@@ -162,14 +196,22 @@ export default function RiderRound() {
             </div>
           </div>
         </div>
+      ) : !shift.handedOverAt ? (
+        <ReturnToHub lang={lang} collected={got} stops={stops} />
       ) : (
         <div className="rounded-3xl bg-white p-8 text-center shadow-lift">
           <span className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-neem-soft text-neem"><PartyPopper size={40} /></span>
-          <p className="mt-4 font-display text-3xl font-bold">{tr("allDone", lang)}</p>
-          <p className="mt-2 text-lg text-ink-soft">{tr("goBack", lang)}</p>
-          <p className="mt-4 font-display text-5xl font-bold tabular">{got} <span className="text-xl font-normal text-ink-soft">{tr("bottles", lang)}</span></p>
-          <Link to="/rider/summary" className="mt-6 inline-flex h-14 items-center justify-center rounded-2xl bg-ink px-8 text-lg font-bold text-white">{tr("earnToday", lang)}</Link>
+          <p className="mt-4 font-display text-3xl font-bold">{tr("shiftDone", lang)}</p>
+          <p className="mt-2 text-lg text-ink-soft">{tr("handedAt", lang)} {new Date(shift.handedOverAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}</p>
+          <div className="mt-5 grid grid-cols-2 gap-3 text-left">
+            <div className="rounded-2xl bg-milk p-4"><Check size={22} className="text-neem" /><p className="mt-1 font-display text-3xl font-bold tabular">{delivered}</p><p className="text-sm text-ink-soft">{tr("homes", lang)}</p></div>
+            <div className="rounded-2xl bg-milk p-4"><Recycle size={22} className="text-neem" /><p className="mt-1 font-display text-3xl font-bold tabular">{shift.returnedBottles}</p><p className="text-sm text-ink-soft">{tr("bottles", lang)}</p></div>
+          </div>
+          <Link to="/rider/summary" className="mt-5 flex h-16 items-center justify-center gap-2 rounded-2xl bg-ink text-lg font-bold text-white"><Wallet size={22} />{tr("earnToday", lang)}</Link>
+          <button onClick={() => { startNewShift(); toast(tr("newShift", lang), "info"); }} className="mt-3 h-14 w-full rounded-2xl bg-milk-2 font-bold text-ink-3">{tr("newShift", lang)}</button>
         </div>
+      )}
+      </>
       )}
 
       <div className="grid grid-cols-2 gap-3">
@@ -230,7 +272,159 @@ export default function RiderRound() {
         </div>
       )}
 
+      {crateOpen && <CrateSheet lang={lang} stops={stops} onClose={() => setCrateOpen(false)} />}
       <CallSheet name={calling?.name ?? null} sub={calling?.sub} color="#2F7D5B" onClose={() => setCalling(null)} />
+    </div>
+  );
+}
+
+/* ---------- shift pieces ---------- */
+
+function crateList(stops: Stop[]) {
+  const m = new Map<string, number>();
+  for (const s of stops) for (const i of s.items) m.set(i.productId, (m.get(i.productId) ?? 0) + i.qty);
+  return products.filter((p) => m.has(p.id)).map((p) => ({ p, qty: m.get(p.id)! + 2 }));
+}
+
+function ShiftSteps({ lang, loaded, loadedAt, done, total, returned, short, onLoad }: { lang: RiderLang; loaded: boolean; loadedAt: string | null; done: number; total: number; returned: boolean; short: number; onLoad: () => void }) {
+  const allDone = done === total;
+  const steps = [
+    { key: "load", icon: <PackageCheck size={20} />, label: tr("stepLoad", lang), state: loaded ? "done" : "now", sub: loaded && loadedAt ? new Date(loadedAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }) + (short ? `, ${short} ${tr("short", lang)}` : "") : "", onClick: loaded ? onLoad : undefined },
+    { key: "deliver", icon: <Truck size={20} />, label: tr("stepDeliver", lang), state: !loaded ? "later" : allDone ? "done" : "now", sub: loaded ? `${done}/${total}` : "" },
+    { key: "return", icon: <Warehouse size={20} />, label: tr("stepReturn", lang), state: returned ? "done" : loaded && allDone ? "now" : "later", sub: "" },
+  ] as const;
+  return (
+    <ol className="grid grid-cols-3 gap-2" aria-label="Shift steps">
+      {steps.map((st) => {
+        const body = (
+          <>
+            <span className={clsx("grid h-9 w-9 place-items-center rounded-full", st.state === "done" ? "bg-neem text-white" : st.state === "now" ? "bg-marigold text-ink" : "bg-milk-2 text-ink-soft")}>{st.state === "done" ? <Check size={18} strokeWidth={3} /> : st.icon}</span>
+            <span className="text-sm font-bold">{st.label}</span>
+            {st.sub && <span className="text-xs tabular text-ink-soft">{st.sub}</span>}
+          </>
+        );
+        return (
+          <li key={st.key}>
+            {"onClick" in st && st.onClick ? (
+              <button onClick={st.onClick} className="flex w-full flex-col items-center gap-1 rounded-2xl bg-white p-2.5 shadow-sm" aria-label={tr("checkCrate", lang)}>{body}</button>
+            ) : (
+              <div className={clsx("flex flex-col items-center gap-1 rounded-2xl p-2.5", st.state === "now" ? "bg-white shadow-sm" : "bg-white/50")} aria-current={st.state === "now" ? "step" : undefined}>{body}</div>
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function Counter({ icon, value, label, tone }: { icon: JSX.Element; value: number; label: string; tone: "good" | "ink" | "bad" | "muted" }) {
+  return (
+    <div className={clsx("flex flex-col items-center rounded-3xl p-3", tone === "good" ? "bg-neem text-white" : tone === "ink" ? "bg-ink text-white" : tone === "bad" ? "bg-brick text-white" : "bg-white text-ink-soft")}>
+      {icon}
+      <span className="font-display text-4xl font-bold leading-tight tabular">{value}</span>
+      <span className="text-sm font-semibold opacity-90">{label}</span>
+    </div>
+  );
+}
+
+function CrateTiles({ lang, items, checked, onToggle, short }: { lang: RiderLang; items: { p: (typeof products)[number]; qty: number }[]; checked: Record<string, boolean>; onToggle?: (id: string) => void; short?: string[] }) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {items.map(({ p, qty }) => {
+        const on = short ? !short.includes(p.id) : !!checked[p.id];
+        const Tag = onToggle ? "button" : "div";
+        return (
+          <Tag key={p.id} {...(onToggle ? { onClick: () => onToggle(p.id), "aria-pressed": on } : {})}
+            className={clsx("relative flex flex-col items-center rounded-2xl border-[3px] p-3 text-center transition", on ? "border-neem bg-neem-soft/50" : short ? "border-brick bg-brick-soft/60" : "border-milk-2 bg-white")}>
+            {on && <span className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-neem text-white"><Check size={16} strokeWidth={3} /></span>}
+            {!on && short && <span className="absolute right-2 top-2 rounded-full bg-brick px-2 py-0.5 text-xs font-bold text-white">{tr("short", lang)}</span>}
+            <ProductArt product={p} size={64} />
+            <span className="mt-1 font-display text-4xl font-bold leading-none tabular">{qty}</span>
+            <span className={clsx("mt-1 line-clamp-2 text-sm leading-tight text-ink-3", lang !== "en" && "font-mr")}>{itemName(p.id, lang)}</span>
+          </Tag>
+        );
+      })}
+    </div>
+  );
+}
+
+function LoadCrate({ lang, stops }: { lang: RiderLang; stops: Stop[] }) {
+  const shift = useStore((s) => s.shift);
+  const toggle = useStore((s) => s.toggleLoadItem);
+  const confirm = useStore((s) => s.confirmLoad);
+  const items = crateList(stops);
+  const missing = items.filter((x) => !shift.checked[x.p.id]).map((x) => x.p.id);
+  const count = items.length - missing.length;
+  return (
+    <div className="rounded-3xl bg-white p-5 shadow-lift">
+      <p className="font-display text-3xl font-bold">{tr("loadTitle", lang)}</p>
+      <p className={clsx("mt-1 text-ink-soft", lang !== "en" && "font-mr")}>{tr("loadSub", lang)} ({tr("spares", lang)})</p>
+      <div className="my-4 flex items-center gap-3">
+        <div className="h-3 flex-1 overflow-hidden rounded-full bg-milk-2"><div className="h-full rounded-full bg-neem transition-[width]" style={{ width: `${(count / items.length) * 100}%` }} /></div>
+        <span className="font-display text-xl font-bold tabular">{count}/{items.length}</span>
+      </div>
+      <CrateTiles lang={lang} items={items} checked={shift.checked} onToggle={toggle} />
+      {missing.length === 0 ? (
+        <button onClick={() => { confirm([]); toast(tr("crateLoaded", lang)); }} className="mt-5 flex h-20 w-full items-center justify-center gap-3 rounded-2xl bg-neem text-2xl font-bold text-white active:scale-[.98]">
+          <Truck size={30} /> {tr("startDelivering", lang)}
+        </button>
+      ) : (
+        <button onClick={() => { confirm(missing); toast(`${tr("crateLoaded", lang)}: ${missing.length} ${tr("short", lang)}`, "warn"); }} className="mt-5 flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-marigold-soft px-4 py-3 text-lg font-bold text-marigold-deep active:scale-[.98]">
+          <TriangleAlert size={24} /> {tr("startShort", lang)}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CrateSheet({ lang, stops, onClose }: { lang: RiderLang; stops: Stop[]; onClose: () => void }) {
+  const shift = useStore((s) => s.shift);
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/50 sm:items-center" role="dialog" aria-modal="true" aria-label={tr("checkCrate", lang)}>
+      <div className="flex max-h-[90vh] w-full max-w-lg animate-rise flex-col rounded-t-3xl bg-white sm:rounded-3xl">
+        <div className="flex items-center justify-between p-5 pb-2">
+          <p className="font-display text-2xl font-bold">{tr("crateLoaded", lang)}</p>
+          <button onClick={onClose} aria-label={tr("close", lang)} className="grid h-12 w-12 place-items-center rounded-full bg-milk-2"><X size={22} /></button>
+        </div>
+        <div className="overflow-y-auto px-5 pb-5">
+          <CrateTiles lang={lang} items={crateList(stops)} checked={{}} short={shift.short} />
+          <button onClick={onClose} className="mt-4 h-14 w-full rounded-2xl bg-ink text-lg font-bold text-white">{tr("close2", lang)}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReturnToHub({ lang, collected, stops }: { lang: RiderLang; collected: number; stops: Stop[] }) {
+  const handover = useStore((s) => s.handover);
+  const [n, setN] = useState(collected);
+  const spares = crateList(stops).map(({ p }) => ({ p, qty: 2 }));
+  return (
+    <div className="rounded-3xl bg-white p-5 shadow-lift">
+      <div className="flex items-center gap-3">
+        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-marigold text-ink"><Warehouse size={28} /></span>
+        <div>
+          <p className="font-display text-3xl font-bold">{tr("returnTitle", lang)}</p>
+          <p className="text-ink-soft">{tr("allDone", lang)}</p>
+        </div>
+      </div>
+      <div className="mt-5 rounded-2xl border-2 border-milk-2 p-4">
+        <p className={clsx("text-center font-semibold text-ink-3", lang !== "en" && "font-mr")}>{tr("returnBottles", lang)}</p>
+        <div className="mt-3 flex items-center justify-center gap-6">
+          <button aria-label="One less bottle" onClick={() => setN(Math.max(0, n - 1))} className="grid h-16 w-16 place-items-center rounded-2xl bg-milk-2 active:scale-95"><Minus size={30} /></button>
+          <span className="w-20 text-center font-display text-6xl font-bold tabular" aria-live="polite">{n}</span>
+          <button aria-label="One more bottle" onClick={() => setN(n + 1)} className="grid h-16 w-16 place-items-center rounded-2xl bg-milk-2 active:scale-95"><Plus size={30} /></button>
+        </div>
+      </div>
+      <p className={clsx("mt-5 font-semibold text-ink-3", lang !== "en" && "font-mr")}>{tr("returnSpares", lang)}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {spares.map(({ p, qty }) => (
+          <span key={p.id} className="flex items-center gap-2 rounded-2xl bg-milk py-1.5 pl-1.5 pr-3"><ProductArt product={p} size={36} /><b className="font-display text-xl">{qty}</b></span>
+        ))}
+      </div>
+      <button onClick={() => { handover(n); toast(tr("shiftDone", lang)); }} className="mt-5 flex h-20 w-full items-center justify-center gap-3 rounded-2xl bg-neem text-2xl font-bold text-white active:scale-[.98]">
+        <Check size={32} strokeWidth={3} /> {tr("handOver", lang)}
+      </button>
     </div>
   );
 }

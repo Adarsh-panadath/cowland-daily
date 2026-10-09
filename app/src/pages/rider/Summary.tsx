@@ -43,6 +43,7 @@ export default function RiderSummary() {
           </div>
         ))}
       </div>
+      <WeekPay lang={lang} today={total} />
       <div className="space-y-3 rounded-3xl bg-white p-5 shadow-sm">
         <Row icon={<Home size={20} />} label={`${delivered.length} × ${inr(PER_DROP)} ${tr("perHome", lang)}`} value={inr(delivered.length * PER_DROP)} />
         <Row icon={<Recycle size={20} />} label={`${bottles} × ${inr(PER_BOTTLE)} ${tr("perBottle", lang)}`} value={inr(bottles * PER_BOTTLE)} />
@@ -59,6 +60,42 @@ function Row({ icon, label, value }: { icon: JSX.Element; label: string; value: 
       <span className="text-ink-3">{icon}</span>
       <span className="flex-1">{label}</span>
       <span className="font-bold tabular">{value}</span>
+    </div>
+  );
+}
+
+/** This week's pay, Monday to today, with the next payday. Earlier days are sample history. */
+function WeekPay({ lang, today }: { lang: "en" | "mr" | "hi"; today: number }) {
+  const now = new Date();
+  const dow = (now.getDay() + 6) % 7; // Monday = 0
+  const past = [262, 248, 281, 0, 270, 255, 266]; // Thursday was the weekly off
+  const days = Array.from({ length: dow + 1 }, (_, i) => {
+    const d = new Date(now);
+    d.setDate(now.getDate() - (dow - i));
+    return { label: d.toLocaleDateString(lang === "en" ? "en-IN" : lang === "mr" ? "mr-IN" : "hi-IN", { weekday: "short" }), amount: i === dow ? today : past[i]!, isToday: i === dow, off: i !== dow && past[i] === 0 };
+  });
+  const max = Math.max(1, ...days.map((d) => d.amount));
+  const total = days.reduce((s, d) => s + d.amount, 0);
+  const payday = new Date(now);
+  payday.setDate(now.getDate() + (7 - dow));
+  return (
+    <div className="rounded-3xl bg-white p-5 shadow-sm">
+      <div className="flex items-baseline justify-between">
+        <p className="text-lg font-bold">{tr("thisWeek", lang)}</p>
+        <p className="font-display text-3xl font-bold tabular">{inr(total)}</p>
+      </div>
+      <div className="mt-4 flex h-40 items-end gap-2" role="img" aria-label={`${tr("thisWeek", lang)}: ${inr(total)}`}>
+        {days.map((d) => (
+          <div key={d.label} className="flex flex-1 flex-col items-center gap-1">
+            <span className="text-xs font-semibold tabular text-ink-3">{d.off ? "—" : `₹${d.amount}`}</span>
+            <div className={d.isToday ? "w-full rounded-t-lg bg-marigold" : "w-full rounded-t-lg bg-ink-2"} style={{ height: `${d.off ? 4 : Math.max(6, (d.amount / max) * 110)}px`, opacity: d.off ? 0.25 : 1 }} />
+            <span className={d.isToday ? "text-sm font-bold" : "text-sm text-ink-soft"}>{d.isToday ? tr("today", lang) : d.label}</span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-4 rounded-2xl bg-neem-soft p-3 text-center font-semibold text-neem-deep">
+        {tr("payday", lang)}: {payday.toLocaleDateString(lang === "en" ? "en-IN" : lang === "mr" ? "mr-IN" : "hi-IN", { weekday: "long", day: "numeric", month: "long" })}
+      </p>
     </div>
   );
 }
