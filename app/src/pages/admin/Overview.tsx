@@ -3,16 +3,21 @@ import { Link } from "react-router-dom";
 import clsx from "clsx";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Droplets, DoorOpen, TriangleAlert, IndianRupee, Sparkles, TrendingUp, MapPinned, WalletMinimal, CloudRain } from "lucide-react";
-import { useStore } from "../../store/useStore";
-import { products } from "../../data/seed";
+import { useStore, useToday } from "../../store/useStore";
+import { productById, products } from "../../data/seed";
 import { dailyTotals } from "../../data/analytics";
 const history = dailyTotals.slice(-30);
-import { addDays, dayKey, dayMonth, inr, num, weekday, clock } from "../../lib/format";
+import { addDays, dayKey, dayMonth, demoNow, inr, num, weekday, clock } from "../../lib/format";
 import { Badge, Card, CardHead, Progress, Segmented } from "../../components/ui";
-import { BroadcastButton, SimToggle, routeStats } from "./shared";
+import { BroadcastButton, NextMorningButton, SimToggle, routeStats } from "./shared";
+import { WAITLIST_THRESHOLD } from "../../data/areas";
 
 export default function AdminOverview() {
-  const stops = useStore((s) => s.stops);
+  const allStops = useStore((s) => s.stops);
+  const stops = useMemo(() => allStops.filter((s) => s.status !== "held"), [allStops]);
+  const heldCount = allStops.length - stops.length;
+  const waitlist = useStore((s) => s.waitlist);
+  useToday();
   const exceptions = useStore((s) => s.exceptions);
   const customers = useStore((s) => s.customers);
   const [metric, setMetric] = useState<"litres" | "revenue">("litres");
@@ -34,7 +39,7 @@ export default function AdminOverview() {
   const forecast = useMemo(() => {
     const avg = history.slice(-7).reduce((s, h) => s + h.litres, 0) / 7;
     return Array.from({ length: 7 }, (_, i) => {
-      const d = addDays(new Date(), i + 1);
+      const d = addDays(demoNow(), i + 1);
       const dow = d.getDay();
       const f = dow === 0 ? 1.09 : dow === 6 ? 1.06 : 1;
       const fest = i === 3 ? 1.14 : 1;
@@ -46,16 +51,23 @@ export default function AdminOverview() {
 
   const kpis = [
     { icon: <Droplets size={18} />, label: "Milk delivered", value: `${num(litresDone, 0)} L`, sub: `of ${num(litresPlanned, 0)} L planned`, pct: (litresDone / litresPlanned) * 100 },
-    { icon: <DoorOpen size={18} />, label: "Doors done", value: `${delivered.length} / ${stops.length}`, sub: `${Math.round((delivered.length / stops.length) * 100)}% complete`, pct: (delivered.length / stops.length) * 100 },
+    { icon: <DoorOpen size={18} />, label: "Doors done", value: `${delivered.length} / ${stops.length}`, sub: `${Math.round((delivered.length / Math.max(1, stops.length)) * 100)}% complete${heldCount ? `, ${heldCount} held` : ""}`, pct: (delivered.length / Math.max(1, stops.length)) * 100 },
     { icon: <TriangleAlert size={18} />, label: "Open tickets", value: String(open.length), sub: open.length ? `Oldest ${clock(open.map((o) => o.createdAt).sort()[0]!)}` : "All clear", tone: open.length ? "warn" : "good" },
     { icon: <IndianRupee size={18} />, label: "Collected from wallets", value: inr(value), sub: "This morning so far" },
   ];
 
-  const insights = [
-    { icon: <TrendingUp size={16} />, title: `Dahi demand up on ${weekday(dayKey(addDays(new Date(), 4)), "long")}`, body: "Ekadashi falls in four days. Last year matka dahi orders rose 35% that morning. Set 40 extra pots on Route 02.", tone: "warn" as const },
-    { icon: <MapPinned size={16} />, title: "Satara Parisar is ready for a route", body: "48 households on the waitlist. A sixth van would add about ₹18,200 a month after rider and fuel costs.", tone: "info" as const },
-    { icon: <WalletMinimal size={16} />, title: `${lowWallet} customers below ₹200`, body: "Send a top-up reminder tonight so their milk isn't held at 10 PM.", tone: lowWallet > 5 ? ("warn" as const) : ("info" as const), link: "/admin/customers" },
-    { icon: <CloudRain size={16} />, title: "Rain likely at 5 AM tomorrow", body: "Routes 03 and 05 ran 9 minutes slower on the last rainy morning. Start them 10 minutes early.", tone: "info" as const },
+  // Live from the waitlist the website collects
+  const topArea = useMemo(() => {
+    const m = new Map<string, { n: number; l: number }>();
+    for (const w of waitlist) { const x = m.get(w.area) ?? { n: 0, l: 0 }; m.set(w.area, { n: x.n + 1, l: x.l + w.litres }); }
+    return [...m.entries()].map(([area, v]) => ({ area, ...v })).sort((a, b) => b.n - a.n)[0];
+  }, [waitlist]);
+
+  const insights: { icon: JSX.Element; title: string; body: string; tone: "warn" | "info"; link?: string; linkLabel?: string; sample?: boolean }[] = [
+    ...(topArea ? [{ icon: <MapPinned size={16} />, title: `${topArea.area}: ${topArea.n} households waiting`, body: `${Math.round((topArea.n / WAITLIST_THRESHOLD) * 100)}% of the ${WAITLIST_THRESHOLD}-home bar for a new route. They want ${num(topArea.l, 1)} L a day, about ${inr(topArea.l * productById.a2!.price * 2)} of milk.`, tone: topArea.n >= WAITLIST_THRESHOLD ? ("warn" as const) : ("info" as const), link: "/admin/demand", linkLabel: "See demand" }] : []),
+    { icon: <WalletMinimal size={16} />, title: `${lowWallet} customers below ₹200`, body: "Send a top-up reminder tonight so their milk isn't held at 10 PM.", tone: lowWallet > 5 ? ("warn" as const) : ("info" as const), link: "/admin/customers", linkLabel: "Review customers" },
+    { icon: <TrendingUp size={16} />, title: `Dahi demand up on ${weekday(dayKey(addDays(demoNow(), 4)), "long")}`, body: "Ekadashi falls in four days. Last year matka dahi orders rose 35% that morning. Set 40 extra pots on Route 02.", tone: "warn" as const, sample: true },
+    { icon: <CloudRain size={16} />, title: "Rain likely at 5 AM tomorrow", body: "Routes 03 and 05 ran 9 minutes slower on the last rainy morning. Start them 10 minutes early.", tone: "info" as const, sample: true },
   ];
 
   return (
@@ -67,6 +79,7 @@ export default function AdminOverview() {
         </div>
         <div className="flex flex-wrap gap-2">
           <BroadcastButton />
+          <NextMorningButton />
           <SimToggle />
         </div>
       </div>
@@ -109,13 +122,13 @@ export default function AdminOverview() {
             <Sparkles size={18} className="text-marigold" />
             <h2 className="font-display text-lg font-semibold">Worth a look today</h2>
           </div>
-          <p className="px-5 text-sm text-white/60">Suggestions from order history, weather and the waitlist.</p>
+          <p className="px-5 text-sm text-white/60">The first two are worked out live from your waitlist and wallets. Items marked Sample show the kind of alert a real data feed would give.</p>
           <ul className="space-y-2 p-4">
             {insights.map((i) => (
               <li key={i.title} className="rounded-2xl bg-white/[.06] p-3.5">
-                <p className="flex items-center gap-2 font-semibold"><span className={i.tone === "warn" ? "text-marigold" : "text-[#9DB4FF]"}>{i.icon}</span>{i.title}</p>
+                <p className="flex items-center gap-2 font-semibold"><span className={i.tone === "warn" ? "text-marigold" : "text-[#9DB4FF]"}>{i.icon}</span><span className="flex-1">{i.title}</span>{i.sample && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/60">Sample</span>}</p>
                 <p className="mt-1 text-sm leading-relaxed text-white/70">{i.body}</p>
-                {i.link && <Link to={i.link} className="mt-2 inline-block text-sm font-semibold text-marigold hover:underline">Review customers</Link>}
+                {i.link && <Link to={i.link} className="mt-2 inline-block text-sm font-semibold text-marigold hover:underline">{i.linkLabel}</Link>}
               </li>
             ))}
           </ul>

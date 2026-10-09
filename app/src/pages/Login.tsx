@@ -30,12 +30,15 @@ export default function Login() {
   const [role, setRole] = useState<Role>(initial in accounts ? initial : "customer");
   const next = params.get("next");
   const [fill, setFill] = useState(0);
+  // follow links that change ?role= while this page is already open
+  useEffect(() => { const r = params.get("role") as Role | null; if (r && r in accounts) setRole(r); }, [params]);
 
   if (session) return <Navigate to={next && next.startsWith(accounts[session].home) ? next : accounts[session].home} replace />;
 
-  const done = (r: Role) => {
-    signIn(r);
-    toast(`Signed in as ${accounts[r].name}.`);
+  const done = (r: Role, customerId?: string) => {
+    signIn(r, customerId);
+    const who = r === "customer" ? useStore.getState().customers.find((c) => c.id === customerId)?.contact : accounts[r].name;
+    toast(`Signed in as ${who}.`);
     nav(next && next.startsWith(accounts[r].home) ? next : accounts[r].home, { replace: true });
   };
 
@@ -83,7 +86,7 @@ export default function Login() {
           <p className="mt-1.5 text-ink-soft">{copy[role].sub}</p>
 
           <div className="mt-7" key={role}>
-            {role === "customer" && <CustomerForm fill={fill} onDone={() => done("customer")} />}
+            {role === "customer" && <CustomerForm fill={fill} onDone={(id) => done("customer", id)} />}
             {role === "rider" && <RiderForm fill={fill} onDone={() => done("rider")} />}
             {role === "admin" && <StaffForm fill={fill} onDone={() => done("admin")} />}
           </div>
@@ -104,8 +107,10 @@ function ErrorText({ children }: { children: ReactNode }) {
 }
 
 /* ---------- Customer: mobile + OTP ---------- */
-function CustomerForm({ onDone, fill }: { onDone: () => void; fill: number }) {
+function CustomerForm({ onDone, fill }: { onDone: (customerId: string) => void; fill: number }) {
   const acc = accounts.customer;
+  const customers = useStore((s) => s.customers);
+  const [who, setWho] = useState("");
   const [phone, setPhone] = useState(acc.id);
   useEffect(() => { if (fill) { setPhone(acc.id); setErr(""); } }, [fill]);
   const [step, setStep] = useState<"phone" | "otp">("phone");
@@ -125,7 +130,9 @@ function CustomerForm({ onDone, fill }: { onDone: () => void; fill: number }) {
     e?.preventDefault();
     const n = normalisePhone(phone);
     if (n.length !== 10) return setErr("Enter a 10-digit mobile number.");
-    if (n !== acc.id) return setErr("We couldn't find a subscription for this number. Use the demo number below.");
+    const found = customers.find((c) => normalisePhone(c.phone) === n);
+    if (!found) return setErr("We couldn't find a subscription for this number. New here? Use “Start a subscription” below, or the demo number.");
+    setWho(found.id);
     setErr("");
     setBusy(true);
     setTimeout(() => {
@@ -142,7 +149,7 @@ function CustomerForm({ onDone, fill }: { onDone: () => void; fill: number }) {
     setBusy(true);
     setTimeout(() => {
       setBusy(false);
-      if (code === acc.secret) onDone();
+      if (code === acc.secret) onDone(who);
       else {
         setErr("That code doesn't match. Check the SMS and try again.");
         setOtp(["", "", "", ""]);
@@ -202,7 +209,7 @@ function CustomerForm({ onDone, fill }: { onDone: () => void; fill: number }) {
       </label>
       {err && <ErrorText>{err}</ErrorText>}
       <Button size="lg" type="submit" className="mt-6 w-full" disabled={busy}>{busy ? <Spinner /> : "Send code"}</Button>
-      <p className="mt-4 text-center text-sm text-ink-soft">New to Cowland? <Link to="/" state={{ scrollTo: "areas" }} className="font-semibold text-ink hover:underline">Check if we deliver to you</Link></p>
+      <p className="mt-4 text-center text-sm text-ink-soft">New to Cowland? <Link to="/join" className="font-semibold text-ink underline decoration-marigold decoration-2 underline-offset-2">Start a subscription</Link></p>
     </form>
   );
 }

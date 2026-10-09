@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit && rm -rf ../assets && vite build",
-    "preview": "vite preview"
+    "build": "tsc --noEmit && node scripts/test.mjs && rm -rf ../assets && vite build",
+    "preview": "vite preview",
+    "test": "node scripts/test.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",

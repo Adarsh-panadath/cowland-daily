@@ -1,4 +1,4 @@
-import type { Batch, Customer, Exception, LineItem, Notice, Product, Rider, Route, Stop, Txn } from "./types";
+import type { Batch, Customer, Exception, LineItem, Notice, Product, Rider, Route, Stop, Txn, WaitEntry } from "./types";
 import { addDays, dayKey } from "../lib/format";
 
 /* Deterministic PRNG so the demo looks the same on every load */
@@ -16,6 +16,9 @@ const pick = <T,>(arr: T[]) => arr[Math.floor(rand() * arr.length)]!;
 const between = (a: number, b: number) => a + rand() * (b - a);
 
 export const ME = "c-001";
+
+/** Stable, human-readable order ID: one consolidated order per household per delivery date. */
+export const orderIdFor = (date: string, customerId: string) => `CD-${date.slice(5, 7)}${date.slice(8, 10)}-${customerId.replace("c-", "")}`;
 
 export const products: Product[] = [
   { id: "a2", name: "Gir cow A2 milk", mr: "गीर गाईचे दूध", kind: "milk", size: "500 ml glass bottle", volumeMl: 500, price: 48, desc: "Single-herd Gir milk from Khuldabad, chilled to 4°C within 40 minutes of milking. Never boiled, never homogenised.", note: "Fat 4.6–5.0%, returnable glass", hue: "#F6F7F9", subscribable: true },
@@ -49,7 +52,7 @@ export const riders: Rider[] = [
 ];
 export const riderById = Object.fromEntries(riders.map((r) => [r.id, r])) as Record<string, Rider>;
 
-const societies: Record<string, string[]> = {
+export const societies: Record<string, string[]> = {
   r1: ["Bansilal Nagar", "Usmanpura Heights", "Padampura Residency", "Kranti Chowk Towers"],
   r2: ["Avishkar Colony", "Shivaji Nagar", "CIDCO N-4 Sector B", "Jijamata Colony"],
   r3: ["Ulkanagari Shanti Niwas", "Mahanubhav Society", "Sutgirni Chowk Apts", "Beed Bypass Greens"],
@@ -153,8 +156,11 @@ function buildStops(customers: Customer[]): Stop[] {
     cs.forEach((c, i) => {
       const glass = c.plan.filter((p) => p.productId === "a2" || p.productId === "buff").reduce((s, p) => s + p.qty, 0);
       const delivered = i < done;
+      const date = dayKey(today);
       stops.push({
-        id: `s-${c.id}`,
+        id: `s-${c.id}-${date}`,
+        orderId: orderIdFor(date, c.id),
+        date,
         customerId: c.id,
         routeId: r.id,
         seq: i + 1,
@@ -163,6 +169,8 @@ function buildStops(customers: Customer[]): Stop[] {
         at: delivered ? atMinute(routeStartMin[r.id]! + i * 2.6 + rand()) : undefined,
         bottlesDue: glass,
         bottlesCollected: delivered ? Math.max(0, glass - (rand() < 0.15 ? 1 : 0)) : 0,
+        delivered: delivered ? c.plan.map((x) => ({ ...x })) : undefined,
+        charged: delivered ? c.plan.reduce((sum, x) => sum + (productById[x.productId]?.price ?? 0) * x.qty, 0) : undefined,
       });
     });
   }
@@ -181,24 +189,35 @@ function ago(min: number) {
   return new Date(base - min * 60000).toISOString();
 }
 
+/** Seeded customer tickets point at an order that was really delivered this morning, with the affected line. */
+const deliveredWith = (routeId: string, pid: string) =>
+  seedStops.find((s) => s.routeId === routeId && s.status === "delivered" && s.customerId !== ME && s.items.some((i) => i.productId === pid && i.qty >= 2)) ??
+  seedStops.find((s) => s.routeId === routeId && s.status === "delivered" && s.customerId !== ME)!;
+const exA = deliveredWith("r4", "a2");
+const exB = deliveredWith("r2", "buff");
+
 export const seedExceptions: Exception[] = [
   {
     id: "ex-1",
     kind: "missing",
-    customerId: seedCustomers.find((c) => c.routeId === "r4" && c.society === "Mayur Park")?.id ?? "c-002",
+    customerId: exA.customerId,
     routeId: "r4",
     source: "customer",
-    message: "Ordered 1 L of A2 milk, only one 500 ml bottle was in the bag.",
+    message: `Ordered ${exA.items[0]!.qty} × ${productById[exA.items[0]!.productId]!.name}, one was missing from the bag.`,
     createdAt: ago(38),
     status: "open",
+    orderId: exA.orderId,
+    items: [{ productId: exA.items[0]!.productId, qty: 1 }],
   },
   {
     id: "ex-2",
     kind: "seal",
-    customerId: seedCustomers.find((c) => c.routeId === "r2")!.id,
+    customerId: exB.customerId,
+    orderId: exB.orderId,
+    items: [{ productId: exB.items[0]!.productId, qty: 1 }],
     routeId: "r2",
     source: "customer",
-    message: "The paper cap on the buffalo milk bottle was loose. Is it safe to drink?",
+    message: `The paper cap on the ${productById[exB.items[0]!.productId]!.name.toLowerCase()} bottle was loose. Is it safe to drink?`,
     createdAt: ago(52),
     status: "open",
   },
@@ -285,6 +304,20 @@ export const history = Array.from({ length: 30 }, (_, k) => {
     complaints: Math.max(0, Math.round(between(-1, 5))),
   };
 });
+
+/** Sample waitlist so the demand page has a starting point. Marked sample; new requests are added on top. */
+export const seedWaitlist: WaitEntry[] = (() => {
+  const out: WaitEntry[] = [];
+  const plan: [string, number][] = [["Satara Parisar", 47], ["Harsul", 21], ["Padegaon", 9], ["Paithan Road", 14]];
+  let k = 0;
+  for (const [area, n] of plan) {
+    for (let i = 0; i < n; i++) {
+      out.push({ id: `w-${k}`, name: `${pick(firsts)} ${pick(surnames)}`, mobile: `9${String(700000000 + k * 7919).slice(0, 9)}`, area, litres: [0.5, 1, 1, 1.5, 2][k % 5]!, at: new Date(Date.now() - (k % 40) * 864e5).toISOString(), sample: true });
+      k++;
+    }
+  }
+  return out;
+})();
 
 export const seedNotices: Notice[] = [
   { id: "n1", role: "customer", text: "Today's milk is in your wire basket. Rider Ganesh picked up 2 empties.", at: ago(70), read: false, tone: "good" },

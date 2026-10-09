@@ -5,7 +5,8 @@ import { useStore } from "../../store/useStore";
 import { productById, riderById } from "../../data/seed";
 import type { Stop } from "../../data/types";
 import { Avatar, Badge, Card, CardHead, Progress } from "../../components/ui";
-import { SimToggle, routeStats } from "./shared";
+import { NextMorningButton, SimToggle, routeStats } from "./shared";
+import { RoutePlanner } from "./RoutePlanner";
 import { CallSheet } from "../../components/CallSheet";
 import { clock, initials } from "../../lib/format";
 
@@ -64,7 +65,8 @@ export default function LiveRoutes() {
   const shift = useStore((s) => s.shift);
   const cur = rs.find((r) => r.route.id === sel)!;
   const rider = riderById[cur.route.riderId]!;
-  const rStops = stops.filter((s) => s.routeId === sel).sort((a, b) => a.seq - b.seq);
+  const rStops = stops.filter((s) => s.routeId === sel && s.status !== "held").sort((a, b) => a.seq - b.seq);
+  const held = stops.filter((s) => s.routeId === sel && s.status === "held");
   const pickedStop = rStops.find((s) => s.id === picked);
   const cust = (id: string) => customers.find((c) => c.id === id)!;
 
@@ -75,7 +77,7 @@ export default function LiveRoutes() {
           <h1 className="font-display text-3xl font-bold tracking-tight">Live routes</h1>
           <p className="text-ink-soft">Pick a route to follow the van. Route 04 moves when you deliver from the rider app.</p>
         </div>
-        <SimToggle />
+        <div className="flex flex-wrap gap-2"><NextMorningButton /><SimToggle /></div>
       </div>
 
       <div className="scrollbar-none -mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-5 sm:px-0">
@@ -88,7 +90,7 @@ export default function LiveRoutes() {
             </div>
             <p className={clsx("truncate text-sm", sel === r.route.id ? "text-white/70" : "text-ink-soft")}>{r.route.name}</p>
             <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/10"><div className="h-full rounded-full transition-[width] duration-700" style={{ width: `${r.pct}%`, background: r.route.color }} /></div>
-            <p className={clsx("mt-2 text-xs font-semibold", sel === r.route.id ? "text-white/80" : "text-ink-3")}>{r.done ? "Finished" : `${r.remaining} doors left, ETA ${clock(r.eta)}`}</p>
+            <p className={clsx("mt-2 text-xs font-semibold", sel === r.route.id ? "text-white/80" : "text-ink-3")}>{r.done ? "Finished" : `${r.remaining} doors left, ETA ${clock(r.eta)}`}{r.held ? `, ${r.held} held` : ""}</p>
           </button>
         ))}
       </div>
@@ -145,6 +147,25 @@ export default function LiveRoutes() {
           </Card>
         </div>
       </div>
+
+      {held.length > 0 && (
+        <Card>
+          <CardHead title={`Held on Route ${cur.route.code}: ${held.length}`} sub="Wallet below the morning's order, so these stay at the hub and aren't charged. They go out once the customer tops up and the next run is built." />
+          <ul className="divide-y divide-milk-2 px-5 py-2 text-sm">
+            {held.map((h) => {
+              const c = cust(h.customerId);
+              return (
+                <li key={h.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                  <span><b>{c.flat}, {c.society}</b> <span className="text-ink-soft">{c.contact}</span></span>
+                  <span className="text-ink-soft">{h.holdReason}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
+
+      <RoutePlanner routeId={sel} />
 
       <CallSheet name={calling ? rider.name : null} sub={`Route ${cur.route.code}, ${rider.vehicle}`} color={cur.route.color} onClose={() => setCalling(false)} />
       <Card>

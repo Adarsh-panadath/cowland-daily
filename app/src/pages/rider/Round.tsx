@@ -47,7 +47,8 @@ export function LangSwitch() {
 
 export default function RiderRound() {
   const lang = useStore((s) => s.riderLang);
-  const stops = useStore((s) => s.stops.filter((x) => x.routeId === ROUTE).sort((a, b) => a.seq - b.seq));
+  // Held orders (wallet too low) never reach the rider's list; the hub sees them instead.
+  const stops = useStore((s) => s.stops.filter((x) => x.routeId === ROUTE && x.status !== "held").sort((a, b) => a.seq - b.seq));
   const customers = useStore((s) => s.customers);
   const notices = useStore((s) => s.notices.filter((n) => n.role === "rider" && !n.read));
   const markRead = useStore((s) => s.markRead);
@@ -56,11 +57,12 @@ export default function RiderRound() {
   const undo = useStore((s) => s.undoStop);
   const [bottles, setBottles] = useState<Record<string, number>>({});
   const [problemFor, setProblemFor] = useState<Stop | null>(null);
+  const [partFor, setPartFor] = useState<Stop | null>(null);
   const [listOpen, setListOpen] = useState(false);
   const [calling, setCalling] = useState<{ name: string; sub?: string } | null>(null);
   const [crateOpen, setCrateOpen] = useState(false);
   const shift = useStore((s) => s.shift);
-  const startNewShift = useStore((s) => s.startNewShift);
+  const advanceDay = useStore((s) => s.advanceDay);
 
   const cust = (id: string) => customers.find((c) => c.id === id)!;
   const pending = stops.filter((s) => s.status === "pending");
@@ -208,7 +210,7 @@ export default function RiderRound() {
             <div className="rounded-2xl bg-milk p-4"><Recycle size={22} className="text-neem" /><p className="mt-1 font-display text-3xl font-bold tabular">{shift.returnedBottles}</p><p className="text-sm text-ink-soft">{tr("bottles", lang)}</p></div>
           </div>
           <Link to="/rider/summary" className="mt-5 flex h-16 items-center justify-center gap-2 rounded-2xl bg-ink text-lg font-bold text-white"><Wallet size={22} />{tr("earnToday", lang)}</Link>
-          <button onClick={() => { startNewShift(); toast(tr("newShift", lang), "info"); }} className="mt-3 h-14 w-full rounded-2xl bg-milk-2 font-bold text-ink-3">{tr("newShift", lang)}</button>
+          <button onClick={() => { advanceDay(); setBottles({}); toast(tr("newShift", lang), "info"); }} className="mt-3 h-14 w-full rounded-2xl bg-milk-2 font-bold text-ink-3">{tr("newShift", lang)}</button>
         </div>
       )}
       </>
@@ -228,6 +230,7 @@ export default function RiderRound() {
               {problems.map((p) => (
                 <button key={p.key} onClick={() => {
                   const id = problemFor.id;
+                  if (p.key === "itemBad") { setPartFor(problemFor); setProblemFor(null); return; }
                   flag(id, p.kind, p.note);
                   setProblemFor(null);
                   toast(tr("saved", lang), "warn", { label: tr("undo", lang), run: () => undo(id) });
@@ -239,6 +242,16 @@ export default function RiderRound() {
             <button onClick={() => setProblemFor(null)} className="mt-3 h-14 w-full rounded-2xl bg-milk-2 text-lg font-bold">{tr("cancel", lang)}</button>
           </div>
         </div>
+      )}
+
+      {partFor && (
+        <PartDelivery lang={lang} stop={partFor} onClose={() => setPartFor(null)} onDone={(given) => {
+          const id = partFor.id;
+          if (given.length) deliver(id, bottles[id] ?? partFor.bottlesDue, given);
+          else flag(id, "missing", "Item short or broken in the crate");
+          setPartFor(null);
+          toast(tr("saved", lang), "warn", { label: tr("undo", lang), run: () => undo(id) });
+        }} />
       )}
 
       {/* All homes */}
@@ -274,6 +287,48 @@ export default function RiderRound() {
 
       {crateOpen && <CrateSheet lang={lang} stops={stops} onClose={() => setCrateOpen(false)} />}
       <CallSheet name={calling?.name ?? null} sub={calling?.sub} color="#2F7D5B" onClose={() => setCalling(null)} />
+    </div>
+  );
+}
+
+/* ---------- part delivery: pictures and − + only ---------- */
+function PartDelivery({ lang, stop, onClose, onDone }: { lang: RiderLang; stop: Stop; onClose: () => void; onDone: (given: { productId: string; qty: number }[]) => void }) {
+  const [given, setGiven] = useState<Record<string, number>>(() => Object.fromEntries(stop.items.map((i) => [i.productId, i.qty])));
+  const lines = stop.items.map((i) => ({ productId: i.productId, qty: given[i.productId] ?? i.qty }));
+  const changed = stop.items.some((i) => (given[i.productId] ?? i.qty) < i.qty);
+  const none = lines.every((l) => l.qty === 0);
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/50 sm:items-center" role="dialog" aria-modal="true" aria-label={tr("gaveTitle", lang)}>
+      <div className="flex max-h-[92vh] w-full max-w-lg animate-rise flex-col rounded-t-3xl bg-white sm:rounded-3xl">
+        <div className="p-5 pb-2 text-center">
+          <p className="font-display text-2xl font-bold">{tr("gaveTitle", lang)}</p>
+          <p className={clsx("text-ink-soft", lang !== "en" && "font-mr")}>{tr("gaveSub", lang)}</p>
+        </div>
+        <div className="space-y-3 overflow-y-auto px-5 pb-2">
+          {stop.items.map((i) => {
+            const g = given[i.productId] ?? i.qty;
+            const short = g < i.qty;
+            return (
+              <div key={i.productId} className={clsx("flex items-center gap-3 rounded-2xl border-[3px] p-3", short ? "border-brick bg-brick-soft/50" : "border-milk-2")}>
+                <ProductArt product={productById[i.productId]!} size={64} />
+                <div className="min-w-0 flex-1">
+                  <p className={clsx("line-clamp-2 text-sm leading-tight text-ink-3", lang !== "en" && "font-mr")}>{itemName(i.productId, lang)}</p>
+                  {short && <p className="text-sm font-bold text-brick">{i.qty - g} {tr("notGiven", lang)}</p>}
+                </div>
+                <button aria-label="One less" onClick={() => setGiven((x) => ({ ...x, [i.productId]: Math.max(0, g - 1) }))} className="grid h-14 w-14 place-items-center rounded-2xl bg-milk-2 active:scale-95"><Minus size={26} /></button>
+                <span className="w-10 text-center font-display text-4xl font-bold tabular" aria-live="polite">{g}</span>
+                <button aria-label="One more" disabled={g >= i.qty} onClick={() => setGiven((x) => ({ ...x, [i.productId]: Math.min(i.qty, g + 1) }))} className="grid h-14 w-14 place-items-center rounded-2xl bg-milk-2 active:scale-95 disabled:opacity-30"><Plus size={26} /></button>
+              </div>
+            );
+          })}
+        </div>
+        <div className="grid gap-3 p-5">
+          <button disabled={!changed} onClick={() => onDone(none ? [] : lines.filter((l) => l.qty > 0))} className={clsx("flex h-20 w-full items-center justify-center gap-3 rounded-2xl text-2xl font-bold text-white active:scale-[.98] disabled:opacity-40", none ? "bg-brick" : "bg-neem")}>
+            {none ? <><PackageX size={30} /> {tr("gaveNone", lang)}</> : <><Check size={30} strokeWidth={3} /> {tr("giveRest", lang)}</>}
+          </button>
+          <button onClick={onClose} className="h-14 w-full rounded-2xl bg-milk-2 text-lg font-bold">{tr("cancel", lang)}</button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -19,6 +19,7 @@ export default function Quality() {
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight">Milk quality</h1>
           <p className="text-ink-soft">Every batch is tested before vans are loaded. Results print on each customer's milk chit.</p>
+          <p className="mt-1.5 inline-flex rounded-lg bg-marigold-soft px-2.5 py-1 text-xs font-semibold text-marigold-deep">Sample lab data, not real test results.</p>
         </div>
         <Button variant="outline" icon={<Printer size={16} />} onClick={() => window.print()}>Print today's certificate</Button>
       </div>

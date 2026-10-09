@@ -4,8 +4,8 @@ import clsx from "clsx";
 import { Search, ShoppingBasket, Plus, PackageOpen } from "lucide-react";
 import { products } from "../../data/seed";
 import type { Product } from "../../data/types";
-import { useStore, useMe, lineTotal } from "../../store/useStore";
-import { addDays, dayKey, dayMonth, inr, weekday } from "../../lib/format";
+import { useStore, useMe, useMyOverrides, useToday, lineTotal } from "../../store/useStore";
+import { addDays, dayKey, dayMonth, firstEditableDate, fromKey, inr, weekday } from "../../lib/format";
 import { Button, Drawer, Empty, Modal, Stepper, inputCls } from "../../components/ui";
 import { ProductArt } from "../../components/ProductArt";
 import { toast } from "../../store/toast";
@@ -125,9 +125,13 @@ function CartDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cartAdd = useStore((s) => s.cartAdd);
   const checkout = useStore((s) => s.checkout);
   const nav = useNavigate();
-  const startOffset = new Date().getHours() >= 22 ? 2 : 1;
-  const dates = Array.from({ length: 4 }, (_, i) => dayKey(addDays(new Date(), startOffset + i)));
-  const [date, setDate] = useState(dates[0]!);
+  const overrides = useMyOverrides();
+  const today = useToday();
+  const first = firstEditableDate();
+  const dates = Array.from({ length: 4 }, (_, i) => dayKey(addDays(fromKey(first), i)));
+  const [picked, setDate] = useState(dates[0]!);
+  const date = dates.includes(picked) ? picked : dates[0]!;
+  const paused = (d: string) => overrides[d]?.status === "skipped" || overrides[d]?.status === "vacation";
   const total = lineTotal(cart);
   const short = total > me.wallet;
 
@@ -138,11 +142,13 @@ function CartDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
           <div className="flex items-baseline justify-between"><span className="text-ink-soft">Total</span><span className="font-display text-2xl font-bold tabular">{inr(total)}</span></div>
           {short && <p className="text-sm text-brick">Your wallet has {inr(me.wallet)}. Add money before 10 PM so this can be packed.</p>}
           <Button size="lg" className="w-full" onClick={() => {
-            const t = checkout(date);
-            toast(`Added to your ${weekday(date, "long")} crate. ${inr(t)} will be charged on delivery.`);
+            const r = checkout(date);
+            if (r === "locked") return toast(`${weekday(date, "long")} is locked for packing. Pick a later day.`, "warn");
+            if (r === "off") return toast(`${weekday(date, "long")} is paused. Resume it in your diary first, or pick another day.`, "warn");
+            toast(`Added to your ${weekday(date, "long")} crate. ${inr(total)} will be charged on delivery.`);
             onClose();
             nav("/customer");
-          }}>Add to {dates[0] === date && startOffset === 1 ? "tomorrow's" : `${weekday(date, "long")}'s`} crate</Button>
+          }}>Add to {date === dayKey(addDays(fromKey(today), 1)) ? "tomorrow's" : `${weekday(date, "long")}'s`} crate</Button>
         </div>
       )}>
       {cart.length === 0 ? (
@@ -171,6 +177,7 @@ function CartDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
                 <button key={d} onClick={() => setDate(d)} aria-pressed={date === d} className={clsx("rounded-xl border py-2 text-center", date === d ? "border-ink bg-ink text-white" : "border-milk-3")}>
                   <span className="block text-xs opacity-70">{weekday(d)}</span>
                   <span className="block text-sm font-semibold">{dayMonth(d)}</span>
+                  {paused(d) && <span className="block text-[10px] font-semibold opacity-80">Paused</span>}
                 </button>
               ))}
             </div>

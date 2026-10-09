@@ -1,7 +1,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { Check, CheckCircle2, Smartphone, CreditCard, Landmark } from "lucide-react";
-import { Button, Field, Modal, inputCls } from "./ui";
+import { Button, Field, Modal, Stepper, inputCls } from "./ui";
 import { useStore, kindLabel, lineTotal } from "../store/useStore";
 import { productById, riderById, routeById, seedBatches } from "../data/seed";
 import type { ExceptionKind, Stop } from "../data/types";
@@ -15,8 +15,10 @@ export function Paavti({ stop, onReport }: { stop: Stop | undefined; onReport: (
   if (!stop) return null;
   const route = routeById[stop.routeId]!;
   const rider = riderById[route.riderId]!;
-  const total = lineTotal(stop.items);
   const delivered = stop.status === "delivered";
+  const got = (pid: string) => (stop.delivered ? stop.delivered.find((d) => d.productId === pid)?.qty ?? 0 : null);
+  const partial = delivered && stop.items.some((i) => (got(i.productId) ?? i.qty) < i.qty);
+  const total = delivered || stop.status === "issue" ? stop.charged ?? 0 : lineTotal(stop.items);
   return (
     <div className="relative">
       <div className="rounded-t-2xl bg-white p-5 shadow-lift">
@@ -24,9 +26,10 @@ export function Paavti({ stop, onReport }: { stop: Stop | undefined; onReport: (
           <div>
             <p className="font-mr text-sm text-ink-soft">आजची पावती</p>
             <p className="font-display text-lg font-semibold text-ink">Today's milk chit</p>
+            <p className="text-xs text-ink-soft tabular">Order {stop.orderId}</p>
           </div>
-          <span className={clsx("rounded-full px-2.5 py-1 text-xs font-bold", delivered ? "bg-neem-soft text-neem-deep" : stop.status === "issue" ? "bg-brick-soft text-brick" : "bg-marigold-soft text-marigold-deep")}>
-            {delivered ? `Delivered ${clock(stop.at!)}` : stop.status === "issue" ? "Problem reported" : "On the way"}
+          <span className={clsx("rounded-full px-2.5 py-1 text-xs font-bold", delivered && !partial ? "bg-neem-soft text-neem-deep" : stop.status === "issue" || partial ? "bg-brick-soft text-brick" : "bg-marigold-soft text-marigold-deep")}>
+            {partial ? `Part delivered ${clock(stop.at!)}` : delivered ? `Delivered ${clock(stop.at!)}` : stop.status === "issue" ? "Couldn't deliver" : "On the way"}
           </span>
         </div>
         <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl bg-milk p-3 text-sm">
@@ -37,24 +40,30 @@ export function Paavti({ stop, onReport }: { stop: Stop | undefined; onReport: (
         <ul className="mt-4 space-y-2.5">
           {stop.items.map((i) => {
             const p = productById[i.productId]!;
+            const g = got(i.productId);
+            const short = g !== null && g < i.qty;
             return (
               <li key={i.productId} className="flex items-baseline justify-between gap-3 text-sm">
-                <span><span className="font-semibold">{i.qty} × {p.name}</span><span className="block text-xs text-ink-soft">{p.size}</span></span>
-                <span className="font-semibold tabular">{inr(p.price * i.qty)}</span>
+                <span>
+                  <span className="font-semibold">{short ? `${g} of ${i.qty}` : i.qty} × {p.name}</span>
+                  <span className={clsx("block text-xs", short ? "text-brick" : "text-ink-soft")}>{short ? `${i.qty - g} not delivered, not charged` : p.size}</span>
+                </span>
+                <span className="font-semibold tabular">{inr(p.price * (g ?? i.qty))}</span>
               </li>
             );
           })}
         </ul>
         <div className="mt-4 flex items-baseline justify-between border-t border-dashed border-milk-3 pt-3">
-          <span className="font-semibold">Total</span>
+          <span className="font-semibold">{delivered ? "Charged" : "Total"}</span>
           <span className="font-display text-2xl font-bold tabular">{inr(total)}</span>
         </div>
-        <p className="mt-1 text-xs text-ink-soft">{delivered ? "Paid from your wallet" : "Will be paid from your wallet on delivery"}</p>
+        <p className="mt-1 text-xs text-ink-soft">{delivered ? "Paid from your wallet. You only pay for what reached your door." : stop.status === "issue" ? "Nothing was charged for this order." : "Paid from your wallet on delivery, only for what arrives."}</p>
       </div>
       <div className="perforation h-3 rotate-180" aria-hidden />
       <div className="rounded-b-2xl bg-white px-5 pb-5 pt-2 shadow-lift">
         <p className="text-xs text-ink-soft">
-          Batch {batch.id}: fat {batch.fat}%, SNF {batch.snf}%, urea and starch not detected. Tested at the Samarth Nagar hub by {batch.chemist}.
+          <span className="mr-1 rounded bg-milk-2 px-1.5 py-0.5 font-semibold text-ink-3">Sample lab data</span>
+          Batch {batch.id}: fat {batch.fat}%, SNF {batch.snf}%, urea and starch not detected.
         </p>
         <div className="mt-4 grid gap-2">
           {delivered && !stop.confirmed && (
@@ -120,6 +129,7 @@ export function TopUpModal({ open, onClose, suggest }: { open: boolean; onClose:
               ))}
             </div>
           </fieldset>
+          <p className="rounded-xl bg-marigold-soft px-3 py-2 text-sm text-marigold-deep">Demo payment. No money moves and no payment app opens.</p>
         </div>
       )}
     </Modal>
@@ -130,20 +140,27 @@ export function TopUpModal({ open, onClose, suggest }: { open: boolean; onClose:
 const kinds: ExceptionKind[] = ["missing", "leak", "seal", "late", "quality"];
 export function ReportModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const report = useStore((s) => s.reportIssue);
+  const stop = useStore((s) => s.stops.find((x) => x.customerId === s.meId && x.status !== "held"));
   const [kind, setKind] = useState<ExceptionKind>("missing");
   const [msg, setMsg] = useState("");
+  const [picked, setPicked] = useState<Record<string, number>>({});
   const [sent, setSent] = useState(false);
-  const close = () => { onClose(); setTimeout(() => { setSent(false); setMsg(""); }, 300); };
+  const close = () => { onClose(); setTimeout(() => { setSent(false); setMsg(""); setPicked({}); }, 300); };
+  const needsItems = kind !== "late";
+  const lines = stop?.items ?? [];
+  const items = Object.entries(picked).filter(([, q]) => q > 0).map(([productId, qty]) => ({ productId, qty }));
+  const canSend = !stop || !needsItems || items.length > 0;
   return (
     <Modal open={open} onClose={close} title={sent ? "We're on it" : "Report a problem"}
-      footer={sent ? <Button onClick={close}>Done</Button> : <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={() => { report(kind, msg || `${kindLabel[kind]} with today's delivery.`); setSent(true); }}>Send report</Button></>}>
+      footer={sent ? <Button onClick={close}>Done</Button> : <><Button variant="ghost" onClick={close}>Cancel</Button><Button disabled={!canSend} onClick={() => { report(kind, msg || `${kindLabel[kind]} with today's delivery.`, needsItems ? items : undefined); setSent(true); }}>Send report</Button></>}>
       {sent ? (
         <div className="py-4">
-          <p className="text-ink-soft">The hub team has your report and will reply within 30 minutes. If a refund is due it goes straight to your wallet.</p>
+          <p className="text-ink-soft">The hub team has your report{stop ? ` for order ${stop.orderId}` : ""} and will reply within 30 minutes. Any refund goes to your wallet and can't be more than you paid for that order.</p>
           <p className="mt-4 rounded-xl bg-milk p-3 text-sm">Demo tip: sign out, then sign in as <b>hub staff</b> and open Tickets to see your report arrive.</p>
         </div>
       ) : (
         <div className="space-y-5">
+          {stop ? <p className="text-sm text-ink-soft">About today's order <b className="text-ink tabular">{stop.orderId}</b></p> : <p className="rounded-xl bg-milk p-3 text-sm">You have no order this morning, so this goes to the hub as a general report.</p>}
           <fieldset>
             <legend className="mb-2 text-sm font-semibold">What went wrong?</legend>
             <div className="flex flex-wrap gap-2">
@@ -152,6 +169,26 @@ export function ReportModal({ open, onClose }: { open: boolean; onClose: () => v
               ))}
             </div>
           </fieldset>
+          {stop && needsItems && (
+            <fieldset>
+              <legend className="mb-2 text-sm font-semibold">Which items? <span className="font-normal text-ink-soft">Tap to choose how many</span></legend>
+              <div className="divide-y divide-milk-2 rounded-xl border border-milk-2">
+                {lines.map((l) => {
+                  const p = productById[l.productId]!;
+                  const v = picked[l.productId] ?? 0;
+                  return (
+                    <div key={l.productId} className="flex items-center gap-3 p-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold">{p.name}</p>
+                        <p className="text-xs text-ink-soft">{l.qty} ordered</p>
+                      </div>
+                      <Stepper label={p.name} value={v} max={l.qty} onChange={(n) => setPicked((x) => ({ ...x, [l.productId]: n }))} />
+                    </div>
+                  );
+                })}
+              </div>
+            </fieldset>
+          )}
           <Field label="Tell us more (optional)">
             <textarea rows={3} value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="For example: only two bottles were in the basket" className={inputCls} />
           </Field>

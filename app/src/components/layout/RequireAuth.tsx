@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
-import { useStore } from "../../store/useStore";
+import { useStore, useAccount } from "../../store/useStore";
 import { accounts } from "../../lib/auth";
 import type { Role } from "../../data/types";
 import { Avatar, Button } from "../ui";
@@ -12,11 +12,11 @@ export function RequireAuth({ role, children }: { role: Role; children: ReactNod
   const signOut = useStore((s) => s.signOut);
   const loc = useLocation();
   const nav = useNavigate();
+  const me = useAccount(session ?? role);
 
   if (!session) return <Navigate to={`/login?role=${role}&next=${encodeURIComponent(loc.pathname)}`} replace />;
   if (session === role) return <>{children}</>;
 
-  const me = accounts[session];
   const want = accounts[role];
   return (
     <div className="grid min-h-screen place-items-center bg-milk px-5">

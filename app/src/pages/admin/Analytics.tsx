@@ -128,6 +128,7 @@ export default function Analytics() {
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight">Analytics</h1>
           <p className="text-ink-soft">Where mornings go wrong, what it costs, and what to fix first. Numbers compare against the period just before.</p>
+          <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-marigold-soft px-2.5 py-1 text-xs font-semibold text-marigold-deep">Sample history: 120 days of generated orders, so the patterns are realistic but not real.</p>
         </div>
         <Button variant="outline" icon={<Download size={16} />} onClick={exportView}>Export this view</Button>
       </div>
@@ -493,7 +494,7 @@ function CustomersTab() {
         </Card>
 
         <Card>
-          <CardHead title="How new customers find us" sub="Last 30 days, from first visit to a month of deliveries" />
+          <CardHead title="How new customers find us" sub="Illustrative funnel: sample numbers for the last 30 days, from first visit to a month of deliveries" right={<Badge>Illustrative</Badge>} />
           <div className="space-y-2.5 p-5">
             {funnel.map((f, i) => {
               const conv = i ? (f.value / funnel[i - 1]!.value) * 100 : 100;
@@ -749,8 +750,8 @@ function Scenarios() {
   return (
     <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
       <Card className="h-fit p-5 xl:sticky xl:top-40">
-        <h2 className="font-display text-lg font-semibold">What if…</h2>
-        <p className="mt-0.5 text-sm text-ink-soft">Move the levers. Baseline is the last 30 days: {num(base.households, 0)} homes a day at {inr(base.perDrop, { decimals: true })} per drop.</p>
+        <div className="flex items-center justify-between gap-2"><h2 className="font-display text-lg font-semibold">What if…</h2><Badge>Scenario estimates</Badge></div>
+        <p className="mt-0.5 text-sm text-ink-soft">Estimates from a simple model, not forecasts. Move the levers. Baseline is the last 30 days: {num(base.households, 0)} homes a day at {inr(base.perDrop, { decimals: true })} per drop.</p>
         <div className="mt-5 space-y-5">
           <Slider label="Price change" value={price} min={-10} max={15} step={1} onChange={setPrice} fmt={(v) => `${v > 0 ? "+" : ""}${v}%`} />
           <label className="block">

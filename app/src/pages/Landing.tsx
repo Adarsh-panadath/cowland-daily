@@ -1,25 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { MapPin, ShieldCheck, Recycle, Clock3, ArrowUpRight, Smartphone, Truck, LayoutDashboard, Check } from "lucide-react";
 import { Logo } from "../components/Logo";
 import { DawnJourney } from "../components/DawnJourney";
 import { ProductArt } from "../components/ProductArt";
-import { products, routes, seedCustomers } from "../data/seed";
-import { useStore } from "../store/useStore";
+import { products, routes } from "../data/seed";
+import { areas, WAITLIST_THRESHOLD } from "../data/areas";
+import { useStore, useAccount } from "../store/useStore";
 import { inr } from "../lib/format";
 import { Avatar, Button, Stepper } from "../components/ui";
 import { accounts } from "../lib/auth";
 import type { Role } from "../data/types";
 
-const onRoute = (r: string) => seedCustomers.filter((c) => c.routeId === r).length;
-const areas = [
-  { id: "samarth", name: "Samarth Nagar, Nirala Bazar", route: "r4", slots: 6, homes: onRoute("r4") },
-  { id: "cidco", name: "CIDCO N-1 to N-6", route: "r2", slots: 4, homes: onRoute("r2") },
-  { id: "station", name: "Station Road, Kranti Chowk", route: "r1", slots: 2, homes: onRoute("r1") },
-  { id: "ulka", name: "Ulkanagari, Beed Bypass", route: "r3", slots: 7, homes: onRoute("r3") },
-  { id: "jalna", name: "Jalna Road, Mukundwadi", route: "r5", slots: 9, homes: onRoute("r5") },
-  { id: "satara", name: "Satara Parisar", route: "", slots: 0, homes: 48 },
-];
+/** Illustrative van capacity, used to show how many places are left on a route. */
+const ROUTE_CAPACITY = 60;
 
 function useOpen() {
   const session = useStore((s) => s.session);
@@ -35,6 +29,8 @@ const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behav
 
 export default function Landing() {
   const open = useOpen();
+  const nav = useNavigate();
+  const customerCount = useStore((s) => s.customers.length);
   const loc = useLocation();
   useEffect(() => {
     const target = (loc.state as { scrollTo?: string } | null)?.scrollTo;
@@ -43,6 +39,7 @@ export default function Landing() {
   const [area, setArea] = useState(areas[0]!.id);
   const a = areas.find((x) => x.id === area)!;
   const r = routes.find((x) => x.id === a.route);
+  const homes = useStore((s) => (a.route ? s.customers.filter((c) => c.routeId === a.route).length : s.waitlist.filter((w) => w.area === a.name).length));
   const [bottles, setBottles] = useState(2);
   const [curd, setCurd] = useState(true);
   const perDay = bottles * 48 + (curd ? 55 : 0);
@@ -78,13 +75,13 @@ export default function Landing() {
               Cowland Daily brings raw-chilled A2 milk, matka dahi and bilona ghee from our Khuldabad farm to your doorstep before the city wakes up. Plan your week, skip a day or add extra for guests, right up to 10 PM the night before.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Button size="lg" variant="accent" onClick={() => open("customer")}>Plan my milk</Button>
+              <Button size="lg" variant="accent" onClick={() => jump("areas")}>Plan my milk</Button>
               <button onClick={() => jump("prototype")} className="inline-flex h-12 items-center gap-2 rounded-xl px-5 text-[15px] font-semibold text-white ring-1 ring-white/25 hover:bg-white/10">
                 Tour the three apps
               </button>
             </div>
             <dl className="mt-12 grid max-w-md grid-cols-3 gap-6 border-t border-white/10 pt-6">
-              {[[String(seedCustomers.length), "homes on five routes"], ["98.4%", "drops before 6:15 AM"], ["0", "preservatives, ever"]].map(([v, l]) => (
+              {[[String(customerCount), "homes on five routes"], ["98.4%", "drops before 6:15 AM"], ["0", "preservatives, ever"]].map(([v, l]) => (
                 <div key={l}>
                   <dt className="sr-only">{l}</dt>
                   <dd className="font-display text-3xl font-bold tabular">{v}</dd>
@@ -191,16 +188,17 @@ export default function Landing() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl bg-white/[.06] p-4"><p className="font-display text-2xl font-bold tabular">{a.homes}</p><p className="text-sm text-white/60">homes already on this route</p></div>
-                  <div className="rounded-2xl bg-white/[.06] p-4"><p className="font-display text-2xl font-bold tabular text-marigold">{a.slots}</p><p className="text-sm text-white/60">spots open this month</p></div>
+                  <div className="rounded-2xl bg-white/[.06] p-4"><p className="font-display text-2xl font-bold tabular">{homes}</p><p className="text-sm text-white/60">homes already on this route</p></div>
+                  <div className="rounded-2xl bg-white/[.06] p-4"><p className="font-display text-2xl font-bold tabular text-marigold">{Math.max(0, ROUTE_CAPACITY - homes)}</p><p className="text-sm text-white/60">places left on the van</p></div>
                 </div>
-                <Button variant="accent" onClick={() => open("customer")}>Start delivery here</Button>
+                <Button variant="accent" onClick={() => nav(`/join?area=${a.id}`)}>Start delivery here</Button>
               </div>
             ) : (
               <div className="mt-6 rounded-2xl bg-white/[.06] p-5">
                 <p className="font-semibold">Not yet, but soon</p>
-                <p className="mt-1 text-sm text-white/70">{a.homes} families in {a.name} are on the waitlist. We open a new route once 60 sign up.</p>
-                <Progress60 value={a.homes} />
+                <p className="mt-1 text-sm text-white/70">{homes} {homes === 1 ? "family" : "families"} in {a.name} {homes === 1 ? "is" : "are"} on the waitlist. We plan a new route once about {WAITLIST_THRESHOLD} sign up.</p>
+                <Progress60 value={homes} />
+                <WaitlistForm area={a.name} />
               </div>
             )}
           </div>
@@ -246,17 +244,54 @@ export default function Landing() {
 function Progress60({ value }: { value: number }) {
   return (
     <div className="mt-4">
-      <div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-marigold" style={{ width: `${Math.min(100, (value / 60) * 100)}%` }} /></div>
-      <p className="mt-2 text-xs text-white/60">{value} of 60 needed</p>
+      <div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-marigold" style={{ width: `${Math.min(100, (value / WAITLIST_THRESHOLD) * 100)}%` }} /></div>
+      <p className="mt-2 text-xs text-white/60">{value} of {WAITLIST_THRESHOLD} needed</p>
     </div>
+  );
+}
+
+function WaitlistForm({ area }: { area: string }) {
+  const join = useStore((s) => s.joinWaitlist);
+  const [name, setName] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [litres, setLitres] = useState(1);
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState<string | null>(null);
+  useEffect(() => { setDone(null); setErr(""); }, [area]);
+  if (done) return <p className="mt-5 flex items-center gap-2 rounded-xl bg-neem/20 p-3 text-sm font-semibold text-white"><Check size={16} /> {done}</p>;
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const m = mobile.replace(/\D/g, "").slice(-10);
+    if (name.trim().length < 2) return setErr("Enter your name.");
+    if (m.length !== 10) return setErr("Enter a 10-digit mobile number.");
+    const r = join({ name: name.trim(), mobile: m, area, litres });
+    setDone(r === "added" ? `You're on the ${area} list. We'll message +91 ${m} when the route opens.` : `This number is already on the ${area} list.`);
+    setName(""); setMobile("");
+  };
+  return (
+    <form onSubmit={submit} noValidate className="mt-5 space-y-3">
+      <p className="text-sm font-semibold">Join the waitlist</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <input value={name} onChange={(e) => { setName(e.target.value); setErr(""); }} placeholder="Your name" aria-label="Your name" className="rounded-xl border-0 bg-white/10 px-3.5 py-2.5 text-sm text-white placeholder:text-white/40 focus:ring-2 focus:ring-marigold" />
+        <input value={mobile} onChange={(e) => { setMobile(e.target.value); setErr(""); }} inputMode="tel" placeholder="Mobile number" aria-label="Mobile number" className="rounded-xl border-0 bg-white/10 px-3.5 py-2.5 text-sm text-white placeholder:text-white/40 focus:ring-2 focus:ring-marigold" />
+      </div>
+      <label className="flex items-center justify-between gap-3 text-sm text-white/80">
+        Milk you'd want each day
+        <select value={litres} onChange={(e) => setLitres(Number(e.target.value))} className="rounded-xl border-0 bg-white/10 px-3 py-2 text-white focus:ring-2 focus:ring-marigold">
+          {[0.5, 1, 1.5, 2, 3].map((l) => <option key={l} value={l} className="text-ink">{l} L</option>)}
+        </select>
+      </label>
+      {err && <p role="alert" className="text-sm font-medium text-marigold">{err}</p>}
+      <Button type="submit" variant="accent" className="w-full">Add me to the list</Button>
+    </form>
   );
 }
 
 function HeaderAccount() {
   const session = useStore((s) => s.session);
   const nav = useNavigate();
+  const a = useAccount(session ?? "customer");
   if (session) {
-    const a = accounts[session];
     return (
       <button onClick={() => nav(a.home)} className="flex items-center gap-2.5 rounded-xl bg-white/10 py-1.5 pl-1.5 pr-4 text-left text-white hover:bg-white/15">
         <Avatar text={a.initials} color={a.color} size={32} />
@@ -267,7 +302,7 @@ function HeaderAccount() {
   return (
     <div className="flex items-center gap-2">
       <Link to="/login" className="hidden rounded-xl px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 sm:block">Sign in</Link>
-      <Button variant="accent" onClick={() => nav("/login?role=customer")}>Get started</Button>
+      <Button variant="accent" onClick={() => nav("/join")}>Get started</Button>
     </div>
   );
 }

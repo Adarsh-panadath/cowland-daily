@@ -21,9 +21,15 @@ export interface LineItem {
 
 export type DayStatus = "scheduled" | "skipped" | "vacation";
 
+/** One customer's changes for one delivery date. `qty` holds absolute quantities (0 removes an item). */
 export interface DayOverride {
   status?: DayStatus;
-  extras?: LineItem[];
+  qty?: Record<string, number>;
+}
+
+export interface PlanChange {
+  from: string; // first delivery date this plan applies to
+  items: LineItem[];
 }
 
 export interface Customer {
@@ -40,6 +46,10 @@ export interface Customer {
   since: string; // YYYY-MM-DD
   status: "active" | "paused";
   dropNote: string;
+  planChanges?: PlanChange[];
+  startDate?: string; // first delivery date for new households
+  landmark?: string;
+  isNew?: boolean;
 }
 
 export interface Rider {
@@ -64,10 +74,12 @@ export interface Route {
   tempC: number;
 }
 
-export type StopStatus = "pending" | "delivered" | "issue" | "skipped";
+export type StopStatus = "pending" | "delivered" | "issue" | "skipped" | "held";
 
 export interface Stop {
   id: string;
+  orderId: string;
+  date: string;
   customerId: string;
   routeId: string;
   seq: number;
@@ -78,6 +90,10 @@ export interface Stop {
   bottlesCollected: number;
   issueNote?: string;
   confirmed?: boolean;
+  confirmedAt?: string;
+  delivered?: LineItem[]; // what actually reached the door; missing means not attempted yet
+  charged?: number; // amount debited for this order (after reversals)
+  holdReason?: string;
 }
 
 export type ExceptionKind = "missing" | "leak" | "late" | "seal" | "access" | "quality" | "callback";
@@ -93,6 +109,8 @@ export interface Exception {
   status: "open" | "resolved";
   refund?: number;
   resolution?: string;
+  orderId?: string;
+  items?: LineItem[]; // affected lines
 }
 
 export interface Txn {
@@ -102,6 +120,7 @@ export interface Txn {
   kind: "debit" | "topup" | "refund";
   amount: number;
   note: string;
+  orderId?: string;
 }
 
 export interface Batch {
@@ -126,4 +145,14 @@ export interface Notice {
   at: string;
   read: boolean;
   tone: "info" | "good" | "warn";
+}
+
+export interface WaitEntry {
+  id: string;
+  name: string;
+  mobile: string;
+  area: string;
+  litres: number;
+  at: string;
+  sample?: boolean;
 }

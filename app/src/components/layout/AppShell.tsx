@@ -3,11 +3,10 @@ import { NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
   Bell, CalendarDays, ShoppingBasket, Wallet, ReceiptText, LifeBuoy, Route as RouteIcon, BarChart3,
-  LayoutDashboard, Users, TriangleAlert, FlaskConical, RotateCcw, Truck, X, CheckCircle2, Info, LogOut, ChevronDown, ChartNoAxesCombined,
-} from "lucide-react";
-import { useStore } from "../../store/useStore";
+  LayoutDashboard, Users, TriangleAlert, FlaskConical, RotateCcw, Truck, X, CheckCircle2, Info, LogOut, ChevronDown, ChartNoAxesCombined, MapPinned } from "lucide-react";
+import { useStore, useAccount } from "../../store/useStore";
 import { accounts } from "../../lib/auth";
-import { useToast } from "../../store/toast";
+import { toast, useToast } from "../../store/toast";
 import type { Role } from "../../data/types";
 import { Avatar, Badge } from "../ui";
 import { Logo } from "../Logo";
@@ -33,6 +32,7 @@ const nav: Record<Role, NavItem[]> = {
     { to: "/admin/routes", label: "Live routes", short: "Routes", icon: <Truck size={18} /> },
     { to: "/admin/tickets", label: "Tickets", icon: <TriangleAlert size={18} /> },
     { to: "/admin/customers", label: "Customers", icon: <Users size={18} /> },
+    { to: "/admin/demand", label: "Demand", icon: <MapPinned size={18} /> },
     { to: "/admin/quality", label: "Milk quality", short: "Quality", icon: <FlaskConical size={18} /> },
   ],
 };
@@ -67,7 +67,7 @@ function LiveClock() {
 }
 
 function Who({ role }: { role: Role }) {
-  const acc = accounts[role];
+  const acc = useAccount(role);
   return (
     <div className="flex items-center gap-3">
       <Avatar text={acc.initials} color={acc.color} />
@@ -80,7 +80,8 @@ function Who({ role }: { role: Role }) {
 }
 
 function AccountMenu({ role }: { role: Role }) {
-  const acc = accounts[role];
+  const acc = useAccount(role);
+  const [confirmReset, setConfirmReset] = useState(false);
   const signOut = useStore((s) => s.signOut);
   const reset = useStore((s) => s.reset);
   const nav = useNavigate();
@@ -115,9 +116,20 @@ function AccountMenu({ role }: { role: Role }) {
               <p className="mt-1 truncate text-xs text-ink-3">{role === "customer" ? `+91 ${acc.id}` : role === "rider" ? `Rider ID ${acc.id}` : acc.id}</p>
             </div>
           </div>
-          <button role="menuitem" onClick={() => { reset(); setOpen(false); }} className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-ink hover:bg-milk">
-            <RotateCcw size={16} className="text-ink-soft" /> Reset demo data
-          </button>
+          {confirmReset ? (
+            <div className="mt-1 rounded-xl border border-brick/30 p-3">
+              <p className="text-sm font-semibold text-ink">Reset all demo data?</p>
+              <p className="mt-0.5 text-xs text-ink-soft">This clears every change, ticket, new sign-up and waitlist entry made in this browser, and goes back to the first demo morning.</p>
+              <div className="mt-2 flex gap-2">
+                <button onClick={() => setConfirmReset(false)} className="flex-1 rounded-lg bg-milk-2 py-1.5 text-sm font-semibold text-ink">Keep</button>
+                <button onClick={() => { const newUser = role === "customer" && acc.id !== accounts.customer.id; reset(); setOpen(false); setConfirmReset(false); toast("Demo data reset.", "info"); if (newUser) nav("/login?role=customer", { replace: true }); }} className="flex-1 rounded-lg bg-brick py-1.5 text-sm font-semibold text-white">Reset</button>
+              </div>
+            </div>
+          ) : (
+            <button role="menuitem" onClick={() => setConfirmReset(true)} className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-ink hover:bg-milk">
+              <RotateCcw size={16} className="text-ink-soft" /> Reset demo data
+            </button>
+          )}
           <button role="menuitem" onClick={out} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-brick hover:bg-brick-soft">
             <LogOut size={16} /> Sign out
           </button>
@@ -180,8 +192,8 @@ function Toaster() {
   const dismiss = useToast((s) => s.dismiss);
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-20 z-[70] flex flex-col items-center gap-2 px-3 lg:bottom-6" aria-live="polite">
-      {toasts.map((t) => (
-        <div key={t.id} className="pointer-events-auto flex w-full max-w-md animate-rise items-center gap-3 rounded-2xl bg-ink px-4 py-3 text-sm text-white shadow-pop">
+      {toasts.map((t, i) => (
+        <div key={t.id} className={clsx("pointer-events-auto w-full max-w-md animate-rise", i < toasts.length - 1 ? "hidden sm:flex" : "flex")} data-toast><div className="flex w-full items-center gap-3 rounded-2xl bg-ink px-4 py-3 text-sm text-white shadow-pop">
           <span className={t.tone === "good" ? "text-[#7BD3A8]" : t.tone === "warn" ? "text-marigold" : "text-[#9DB4FF]"}>
             {t.tone === "good" ? <CheckCircle2 size={18} /> : t.tone === "warn" ? <TriangleAlert size={18} /> : <Info size={18} />}
           </span>
@@ -194,7 +206,7 @@ function Toaster() {
           <button aria-label="Dismiss" onClick={() => dismiss(t.id)} className="text-white/60 hover:text-white">
             <X size={16} />
           </button>
-        </div>
+        </div></div>
       ))}
     </div>
   );

@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Pause, Play, Megaphone } from "lucide-react";
+import { Pause, Play, Megaphone, SunMedium } from "lucide-react";
 import { useStore, lineTotal, volumeMl } from "../../store/useStore";
 import { routes } from "../../data/seed";
 import type { Stop } from "../../data/types";
 import { Button, Field, Modal, inputCls } from "../../components/ui";
 import { toast } from "../../store/toast";
+import { demoAt } from "../../lib/format";
 
 export function SimToggle() {
   const simOn = useStore((s) => s.simOn);
@@ -42,17 +43,42 @@ export function BroadcastButton() {
 
 export function routeStats(stops: Stop[]) {
   return routes.map((r) => {
-    const rs = stops.filter((s) => s.routeId === r.id);
+    const all = stops.filter((s) => s.routeId === r.id);
+    const rs = all.filter((s) => s.status !== "held"); // held orders aren't on the van
+    const held = all.length - rs.length;
     const delivered = rs.filter((s) => s.status === "delivered");
     const issues = rs.filter((s) => s.status === "issue");
     const total = rs.length;
     const pct = total ? ((delivered.length + issues.length) / total) * 100 : 0;
     const litresPlanned = rs.reduce((s, x) => s + volumeMl(x.items), 0) / 1000;
-    const litresDone = delivered.reduce((s, x) => s + volumeMl(x.items), 0) / 1000;
-    const value = delivered.reduce((s, x) => s + lineTotal(x.items), 0);
+    const litresDone = delivered.reduce((s, x) => s + volumeMl(x.delivered ?? x.items), 0) / 1000;
+    const value = delivered.reduce((s, x) => s + (x.charged ?? lineTotal(x.items)), 0);
     const last = delivered.map((s) => s.at!).sort().at(-1);
     const remaining = total - delivered.length - issues.length;
-    const eta = new Date((last ? new Date(last).getTime() : Date.now()) + remaining * 2.6 * 60000);
-    return { route: r, total, delivered: delivered.length, issues: issues.length, pct, litresPlanned, litresDone, value, remaining, eta, done: remaining === 0 };
+    const eta = new Date((last ? new Date(last).getTime() : demoAt(5, 15).getTime()) + remaining * 2.6 * 60000);
+    return { route: r, held, total, delivered: delivered.length, issues: issues.length, pct, litresPlanned, litresDone, value, remaining, eta, done: remaining === 0 };
   });
+}
+
+/** Demo clock: jump to the next delivery morning, building its orders from plans, skips and extras. */
+export function NextMorningButton({ variant = "outline" }: { variant?: "outline" | "soft" }) {
+  const advance = useStore((s) => s.advanceDay);
+  const pending = useStore((s) => s.stops.filter((x) => x.status === "pending").length);
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button variant={variant} icon={<SunMedium size={16} />} onClick={() => setOpen(true)}>Next delivery morning</Button>
+      <Modal open={open} onClose={() => setOpen(false)} title="Move to the next delivery morning?"
+        footer={<><Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={() => { advance(); setOpen(false); toast("New delivery morning. Orders are built and the vans haven't left yet.", "info"); }}>Go to next morning</Button></>}>
+        <div className="space-y-3 text-sm text-ink-3">
+          <p>This demo clock jumps one day ahead. Every household's order for that morning is built from their regular order, plan changes, skipped days, vacations and extras.</p>
+          <ul className="list-disc space-y-1 pl-5">
+            <li>Homes whose wallet can't cover the order are <b>held</b> and stay off the rider's list.</li>
+            <li>Riders start again at the crate check. Tickets, wallets and history carry over.</li>
+            {pending > 0 && <li>{pending} drop{pending === 1 ? " is" : "s are"} still pending this morning and won't be delivered or charged.</li>}
+          </ul>
+        </div>
+      </Modal>
+    </>
+  );
 }

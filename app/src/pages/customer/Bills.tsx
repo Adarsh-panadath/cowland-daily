@@ -1,13 +1,12 @@
 import { Download, FileText } from "lucide-react";
 import { useStore, useMe } from "../../store/useStore";
-import { ME } from "../../data/seed";
 import { dayKey, dayMonth, inr, weekday, clock } from "../../lib/format";
 import { Badge, Button, Card, CardHead } from "../../components/ui";
 import { toast } from "../../store/toast";
 
 export default function Bills() {
   const me = useMe();
-  const txns = useStore((s) => s.txns.filter((t) => t.customerId === ME));
+  const txns = useStore((s) => s.txns.filter((t) => t.customerId === s.meId));
   const debits = txns.filter((t) => t.kind === "debit");
   const refunds = txns.filter((t) => t.kind === "refund").reduce((s, t) => s + t.amount, 0);
   const total = debits.reduce((s, t) => s + t.amount, 0);

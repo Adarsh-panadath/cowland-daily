@@ -2,7 +2,6 @@ import { useState } from "react";
 import clsx from "clsx";
 import { ChevronDown, MessageCircle, Phone, TicketCheck, CircleDot, CheckCircle2 } from "lucide-react";
 import { useStore, kindLabel } from "../../store/useStore";
-import { ME } from "../../data/seed";
 import { inr, timeAgo } from "../../lib/format";
 import { Badge, Button, Card, CardHead, Empty } from "../../components/ui";
 import { ReportModal } from "../../components/customer";
@@ -18,7 +17,7 @@ const faqs = [
 ];
 
 export default function Help() {
-  const tickets = useStore((s) => s.exceptions.filter((e) => e.customerId === ME));
+  const tickets = useStore((s) => s.exceptions.filter((e) => e.customerId === s.meId));
   const [open, setOpen] = useState(false);
   const [faq, setFaq] = useState<number | null>(0);
   const [calling, setCalling] = useState(false);

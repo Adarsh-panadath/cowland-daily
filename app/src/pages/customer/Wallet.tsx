@@ -3,7 +3,6 @@ import clsx from "clsx";
 import { ArrowDownLeft, ArrowUpRight, RotateCcw } from "lucide-react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useStore, useMe, lineTotal } from "../../store/useStore";
-import { ME } from "../../data/seed";
 import { addDays, dayKey, dayMonth, inr, clock } from "../../lib/format";
 import { Button, Card, CardHead, Segmented } from "../../components/ui";
 import { TopUpModal } from "../../components/customer";
@@ -11,7 +10,7 @@ import { toast } from "../../store/toast";
 
 export default function WalletPage() {
   const me = useMe();
-  const txns = useStore((s) => s.txns.filter((t) => t.customerId === ME));
+  const txns = useStore((s) => s.txns.filter((t) => t.customerId === s.meId));
   const [filter, setFilter] = useState<"all" | "debit" | "topup" | "refund">("all");
   const [open, setOpen] = useState(false);
   const auto = useStore((s) => s.autoTopUp);

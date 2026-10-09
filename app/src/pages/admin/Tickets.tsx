@@ -2,14 +2,16 @@ import { useState } from "react";
 import clsx from "clsx";
 import { Inbox, User, Truck, Cpu } from "lucide-react";
 import { useStore, kindLabel, lineTotal } from "../../store/useStore";
+import { GOODWILL_CAP, refundCap, refundableOn } from "../../store/rules";
 import { ME, productById, routeById } from "../../data/seed";
 import type { Exception, ExceptionKind } from "../../data/types";
-import { clock, inr, timeAgo } from "../../lib/format";
+import { clock, inr, timeAgo, weekday } from "../../lib/format";
 import { Badge, Button, Card, Empty, Field, Modal, Segmented, inputCls } from "../../components/ui";
 import { toast } from "../../store/toast";
 
 const tone: Record<ExceptionKind, "bad" | "warn" | "neutral"> = { missing: "bad", leak: "bad", seal: "warn", late: "warn", access: "neutral", quality: "bad", callback: "neutral" };
 const srcIcon = { customer: <User size={14} />, rider: <Truck size={14} />, system: <Cpu size={14} /> };
+
 const srcLabel = { customer: "Customer", rider: "Rider", system: "Automatic" };
 
 export default function Tickets() {
@@ -45,7 +47,7 @@ export default function Tickets() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold">{c.flat}, {c.society} <span className="font-normal text-ink-soft">{c.id === ME ? "(Deshmukh family, demo customer)" : c.contact}</span></p>
-                      <p className="truncate text-sm text-ink-soft">{e.message}</p>
+                      <p className="truncate text-sm text-ink-soft">{e.orderId && <span className="mr-1.5 tabular text-ink-3">{e.orderId}</span>}{e.message}</p>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-ink-soft sm:w-56 sm:justify-end">
                       <span className="inline-flex items-center gap-1">{srcIcon[e.source]} {srcLabel[e.source]}</span>
@@ -66,24 +68,41 @@ export default function Tickets() {
 
 function TicketModal({ ex, onClose }: { ex: Exception | null; onClose: () => void }) {
   const resolve = useStore((s) => s.resolve);
+  const retry = useStore((s) => s.scheduleRetry);
   const customers = useStore((s) => s.customers);
-  const stop = useStore((s) => (ex ? s.stops.find((x) => x.customerId === ex.customerId) : undefined));
-  const suggested = stop && ex ? (ex.kind === "missing" || ex.kind === "leak" ? productById[stop.items[0]!.productId]!.price : ex.kind === "late" ? 20 : 0) : 0;
-  const [action, setAction] = useState<"refund" | "replace" | "explain">("refund");
+  const txns = useStore((s) => s.txns);
+  const stop = useStore((s) => (ex?.orderId ? s.stops.find((x) => x.orderId === ex.orderId) : undefined));
+  const [action, setAction] = useState<"refund" | "retry" | "explain" | null>(null);
   const [amount, setAmount] = useState<number | null>(null);
   const [note, setNote] = useState("");
   if (!ex) return null;
   const c = customers.find((x) => x.id === ex.customerId)!;
+  // Refunds are bounded by what the ledger says is still charged on this order.
+  const cap = refundCap(ex, stop, txns);
+  const orderCharged = ex.orderId ? refundableOn(ex.orderId, txns) : 0;
+  // Only the affected items the customer actually paid for can be refunded; undelivered ones were never charged.
+  const paidFor = (ex.items ?? []).map((i) => ({ productId: i.productId, qty: stop?.delivered ? Math.min(i.qty, stop.delivered.find((d) => d.productId === i.productId)?.qty ?? 0) : i.qty }));
+  const itemsValue = ex.items ? lineTotal(paidFor) : ex.kind === "late" ? 20 : 0;
+  const unpaid = (ex.items ?? []).filter((i, k) => paidFor[k]!.qty < i.qty);
+  const suggested = Math.min(cap, itemsValue);
+  const canRetry = !!ex.items?.length;
+  const act = action ?? (suggested > 0 ? "refund" : canRetry ? "retry" : "explain");
   const amt = amount ?? suggested;
-  const close = () => { setAmount(null); setNote(""); setAction("refund"); onClose(); };
+  const over = amt > cap || amt < 0;
+  const close = () => { setAmount(null); setNote(""); setAction(null); onClose(); };
   const done = ex.status === "resolved";
 
   return (
     <Modal open onClose={close} title={kindLabel[ex.kind]} wide
-      footer={done ? <Button onClick={close}>Close</Button> : <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={() => {
-        const text = action === "refund" ? `Refunded ${inr(amt)} to wallet` : action === "replace" ? "Replacement sent on the same route" : note || "Explained to the customer";
-        resolve(ex.id, action === "refund" ? amt : 0, text);
-        toast(action === "refund" ? `${inr(amt)} refunded to ${c.name}.` : "Ticket resolved.");
+      footer={done ? <Button onClick={close}>Close</Button> : <><Button variant="ghost" onClick={close}>Cancel</Button><Button disabled={act === "refund" && (over || amt === 0)} onClick={() => {
+        if (act === "retry") {
+          const d = retry(ex.id);
+          toast(d ? `Added to ${c.name}'s ${weekday(d, "long")} delivery. Charged only when it arrives.` : "Couldn't schedule a retry.", d ? "good" : "warn");
+          return close();
+        }
+        const text = act === "refund" ? `Refunded ${inr(amt)} to wallet` : note || "Explained to the customer";
+        const paid = resolve(ex.id, act === "refund" ? amt : 0, text);
+        toast(act === "refund" ? `${inr(paid)} refunded to ${c.name}.` : "Ticket resolved.");
         close();
       }}>Resolve ticket</Button></>}>
       <div className="grid gap-5 sm:grid-cols-2">
@@ -95,11 +114,23 @@ function TicketModal({ ex, onClose }: { ex: Exception | null; onClose: () => voi
             <p className="text-sm text-ink-soft">{c.phone}</p>
             <p className="mt-2 text-sm">Wallet <b className={clsx("tabular", c.wallet < 0 && "text-brick")}>{inr(c.wallet)}</b></p>
           </div>
-          {stop && (
+          {ex.orderId ? (
             <div className="rounded-2xl bg-milk p-4 text-sm">
-              <p className="text-ink-soft">Today's order, Route {routeById[stop.routeId]!.code}</p>
-              <ul className="mt-1">{stop.items.map((i) => <li key={i.productId}>{i.qty} × {productById[i.productId]!.name}</li>)}</ul>
-              <p className="mt-2">{stop.status === "delivered" ? `Delivered at ${clock(stop.at!)}` : stop.status === "issue" ? `Rider flagged: ${stop.issueNote}` : "Not delivered yet"}, worth {inr(lineTotal(stop.items))}</p>
+              <p className="text-ink-soft">Order <b className="tabular text-ink">{ex.orderId}</b>{stop ? `, Route ${routeById[stop.routeId]!.code}` : ""}</p>
+              {stop && <ul className="mt-1">{stop.items.map((i) => {
+                const got = stop.delivered?.find((d) => d.productId === i.productId)?.qty;
+                return <li key={i.productId}>{i.qty} × {productById[i.productId]!.name}{got !== undefined && got < i.qty ? <span className="text-brick"> ({got} delivered)</span> : null}</li>;
+              })}</ul>}
+              {stop && <p className="mt-2">{stop.status === "delivered" ? `Delivered at ${clock(stop.at!)}` : stop.status === "issue" ? `Rider flagged: ${stop.issueNote}` : stop.status === "held" ? "Held: wallet too low" : "Not delivered yet"}</p>}
+              <p className="mt-2">Charged on this order now <b className="tabular">{inr(orderCharged)}</b></p>
+            </div>
+          ) : (
+            <p className="rounded-2xl bg-milk p-4 text-sm text-ink-soft">Not linked to an order. Goodwill credit is capped at {inr(GOODWILL_CAP)}.</p>
+          )}
+          {ex.items && (
+            <div className="rounded-2xl border border-milk-3 p-4 text-sm">
+              <p className="font-semibold">Affected items</p>
+              <ul className="mt-1">{ex.items.map((i) => <li key={i.productId}>{i.qty} × {productById[i.productId]!.name}, {inr(productById[i.productId]!.price * i.qty)}</li>)}</ul>
             </div>
           )}
         </div>
@@ -112,14 +143,21 @@ function TicketModal({ ex, onClose }: { ex: Exception | null; onClose: () => voi
             <div className="mt-5 space-y-3">
               <fieldset className="space-y-2">
                 <legend className="mb-1 text-sm font-semibold">What should we do?</legend>
-                {([["refund", "Refund to wallet"], ["replace", "Send a replacement now"], ["explain", "No refund, reply with an explanation"]] as const).map(([v, l]) => (
-                  <label key={v} className={clsx("flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm", action === v ? "border-ink bg-milk" : "border-milk-3")}>
-                    <input type="radio" name="act" checked={action === v} onChange={() => setAction(v)} className="accent-[#14213D]" /> {l}
+                {([["refund", "Refund to wallet"], ["retry", "Deliver the missing items on the next run"], ["explain", "No refund, reply with an explanation"]] as const).filter(([v]) => v !== "retry" || canRetry).map(([v, l]) => (
+                  <label key={v} className={clsx("flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm", act === v ? "border-ink bg-milk" : "border-milk-3", v === "refund" && cap === 0 && "opacity-50")}>
+                    <input type="radio" name="act" checked={act === v} disabled={v === "refund" && cap === 0} onChange={() => setAction(v)} className="accent-[#14213D]" /> {l}{v === "refund" && cap === 0 ? (orderCharged > 0 ? " (these items weren't charged)" : " (nothing charged on this order)") : ""}
                   </label>
                 ))}
+                {unpaid.length > 0 && <p className="rounded-xl bg-milk px-3 py-2 text-xs text-ink-3">{unpaid.map((i) => productById[i.productId]!.name).join(", ")} wasn't delivered, so it wasn't charged. Refunding it would pay the customer for something they never paid for.</p>}
+                {act === "retry" && <p className="rounded-xl bg-neem-soft px-3 py-2 text-xs text-neem-deep">Adds the items to the customer's next order that isn't locked. They're charged only if delivered, so nothing is paid twice.</p>}
               </fieldset>
-              {action === "refund" && <Field label="Refund amount" hint={suggested ? `Suggested ${inr(suggested)}, the value of the affected item` : undefined}><input type="number" min={0} value={amt} onChange={(e) => setAmount(Number(e.target.value))} className={inputCls} /></Field>}
-              {action === "explain" && <Field label="Reply to customer"><textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="The cap is a second paper seal. The batch stamp underneath was intact." className={inputCls} /></Field>}
+              {act === "refund" && (
+                <Field label="Refund amount" hint={`Up to ${inr(cap)}${suggested ? `. Suggested ${inr(suggested)}, the value of the affected items` : ""}.`}>
+                  <input type="number" min={0} max={cap} value={amt} onChange={(e) => setAmount(Number(e.target.value))} className={clsx(inputCls, over && "border-brick")} />
+                  {over && <span className="mt-1 block text-xs font-semibold text-brick">Can't refund more than {inr(cap)} on this order.</span>}
+                </Field>
+              )}
+              {act === "explain" && <Field label="Reply to customer"><textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="The cap is a second paper seal. The batch stamp underneath was intact." className={inputCls} /></Field>}
             </div>
           )}
         </div>
