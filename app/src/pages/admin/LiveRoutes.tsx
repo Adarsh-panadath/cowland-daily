@@ -180,7 +180,7 @@ export default function LiveRoutes() {
                   <tr key={s.id} onClick={() => setPicked(s.id)} className={clsx("cursor-pointer hover:bg-milk/60", picked === s.id && "bg-marigold-soft/50")}>
                     <td className="px-5 py-2.5 tabular text-ink-soft">{s.seq}</td>
                     <td className="px-3 py-2.5 font-semibold">{c.flat}, {c.society}</td>
-                    <td className="px-3 py-2.5 text-ink-soft">{s.items.map((i) => `${i.qty} ${productById[i.productId]!.name}`).join(", ")}</td>
+                    <td className="px-3 py-2.5 text-ink-soft">{s.items.map((i) => `${i.qty} ${productById[i.productId]!.name}`).join(", ")}{s.fromVan?.length ? <span className="ml-1.5 rounded bg-marigold-soft px-1.5 py-0.5 text-xs font-semibold text-marigold-deep">+{s.fromVan.reduce((a, v) => a + v.qty, 0)} from van spares</span> : null}{s.releasedAt ? <span className="ml-1.5 rounded bg-neem-soft px-1.5 py-0.5 text-xs font-semibold text-neem-deep">won back</span> : null}</td>
                     <td className="px-3 py-2.5">{s.status === "delivered" ? <Badge tone="good">{clock(s.at!)}</Badge> : s.status === "issue" ? <Badge tone="bad">{s.issueNote}</Badge> : <Badge>Pending</Badge>}</td>
                     <td className="px-5 py-2.5 text-right tabular">{s.status === "delivered" ? `${s.bottlesCollected}/${s.bottlesDue}` : s.bottlesDue}</td>
                   </tr>

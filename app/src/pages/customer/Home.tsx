@@ -8,6 +8,7 @@ import type { LineItem } from "../../data/types";
 import { addDays, dayKey, dayMonth, firstEditableDate, fromKey, inr, isLockedDate, litres, longDate, weekday } from "../../lib/format";
 import { Badge, Button, Card, CardHead, Field, Modal, Stepper, inputCls } from "../../components/ui";
 import { Paavti, ReportModal, TopUpModal } from "../../components/customer";
+import { DoorFix, InviteNeighbour, OnTheVan, Shortfall } from "../../components/growth";
 import { ProductArt } from "../../components/ProductArt";
 import { toast } from "../../store/toast";
 
@@ -35,6 +36,9 @@ export default function CustomerHome() {
   const [vacation, setVacation] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [topUp, setTopUp] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState<number | undefined>(undefined);
+  const nextDay = days[0]!;
+  const nextTotal = lineTotal(itemsOn(me, overrides[nextDay], nextDay));
   const [report, setReport] = useState(false);
 
   const first = firstEditableDate();
@@ -69,6 +73,9 @@ export default function CustomerHome() {
           <Link to="/customer/shop"><Button variant="accent" icon={<Plus size={16} />}>Order extras</Button></Link>
         </div>
       </div>
+
+      <Shortfall date={nextDay} total={nextTotal} onTopUp={(a) => { setTopUpAmount(a); setTopUp(true); }} />
+      <DoorFix />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0 space-y-6">
@@ -197,10 +204,11 @@ export default function CustomerHome() {
           {stop?.status === "held" && (
             <Card className="border border-brick/30 p-5">
               <p className="flex items-center gap-2 font-semibold text-brick"><AlertTriangle size={18} /> Today's milk is on hold</p>
-              <p className="mt-1 text-sm text-ink-soft">{stop.holdReason}. Add money and we'll send it with the next van.</p>
-              <Button className="mt-3 w-full" onClick={() => setTopUp(true)}>Add money</Button>
+              <p className="mt-1 text-sm text-ink-soft">{stop.holdReason}. Add money and it goes straight back on this morning's van.</p>
+              <Button className="mt-3 w-full" onClick={() => { setTopUpAmount(Math.max(100, Math.ceil((lineTotal(stop.items) - me.wallet) / 100) * 100)); setTopUp(true); }}>Add {inr(Math.max(100, Math.ceil((lineTotal(stop.items) - me.wallet) / 100) * 100))}</Button>
             </Card>
           )}
+          {stop && stop.status === "pending" && <OnTheVan stop={stop} />}
           {stop && stop.status !== "held" ? <Paavti stop={stop} onReport={() => setReport(true)} /> : !stop && <FirstDelivery />}
           <Card className="p-5">
             <div className="flex items-start justify-between">
@@ -218,12 +226,13 @@ export default function CustomerHome() {
               <Link to="/customer/wallet" className="flex-1"><Button variant="soft" className="w-full">History</Button></Link>
             </div>
           </Card>
+          <InviteNeighbour />
         </div>
       </div>
 
       <VacationModal open={vacation} onClose={() => setVacation(false)} dailyCost={dailyCost} />
       <PlanModal open={planOpen} onClose={() => setPlanOpen(false)} />
-      <TopUpModal open={topUp} onClose={() => setTopUp(false)} />
+      <TopUpModal open={topUp} suggest={topUpAmount} onClose={() => { setTopUp(false); setTopUpAmount(undefined); }} />
       <ReportModal open={report} onClose={() => setReport(false)} />
     </div>
   );

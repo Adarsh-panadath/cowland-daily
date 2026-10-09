@@ -40,6 +40,15 @@ The prototype runs on a delivery-morning clock. It opens on "this morning", with
 7. Sign in as the new customer: the chit shows the order ID, "0 of 1 × Malai paneer, not delivered, not charged" and ₹96 charged. Report the missing paneer.
 8. Sign in as hub staff → **Tickets**: the ticket shows the same order ID and that paneer was never charged, so a refund is blocked. Choose **Deliver the missing items on the next run**. The customer sees it on their next order and in Help, and the wallet reads ₹904.
 
+## Selling more on the same vans
+
+Four ideas for raising sales by making each morning's run work harder. None of them uses discounts.
+
+1. **Spares on the van.** Every van already leaves with 2 spares of each item on its route. While the van is on its way, customers see "On Ganesh's van right now" and can add a spare to that morning's milk at the normal price, paid only if it reaches the door. The rider gets a message and a "+1 from spares" tag on that home's card. Unsold spares are shown on the handover screen. The hub sees spare sales on the Overview.
+2. **Fill the vans first.** One more home in a building the van already visits adds about a minute and a half to the run; a new area needs a whole new van. The hub's **Demand** page ranks buildings on existing routes by the van minutes one more home would add (using the route planner's model). Customers can share a plain invite with neighbours in their building (no reward), and the hub sees how many invites each building has shared.
+3. **Win back held orders.** The customer's home page warns the night before, with the exact amount short (after today's milk is paid for). When an order is held, the hub can remind those homes, and a top-up that covers the order puts it straight back on that morning's van, at the end of the route. The Overview shows money still held and money won back.
+4. **Fewer failed doors.** If the door was locked on an earlier morning, the rider sees "Door was locked last time. Call first." After a failed delivery, the customer is asked to update their drop instructions, which the rider sees (and hears read aloud) next time.
+
 ## How the rules work
 
 The business rules live in `app/src/store/rules.ts` as plain functions, and the store (`app/src/store/useStore.ts`) uses them for every action.
@@ -81,7 +90,7 @@ npm test         # business-rule and store tests (Node's test runner, bundled wi
 npm run build    # type-check, tests, then build into the repo root
 ```
 
-The tests cover the regressions the brief listed: lowering one day below the regular plan, the draft plan editor and its effective date, the 10 PM IST lock at 9:59 and 10:00 across every entry point, undo leaving a reversal and clearing the confirmation, a new real day keeping the demo, new households acting as themselves, plus part delivery, bounded refunds, retries, held orders, waitlist de-duplication, upgrading an older saved demo and route sequencing.
+The tests cover the regressions the brief listed: lowering one day below the regular plan, the draft plan editor and its effective date, the 10 PM IST lock at 9:59 and 10:00 across every entry point, undo leaving a reversal and clearing the confirmation, a new real day keeping the demo, new households acting as themselves, plus part delivery, bounded refunds, retries, held orders, van spares, held orders won back by a top-up, waitlist de-duplication, upgrading an older saved demo and route sequencing.
 
 ## Stack
 

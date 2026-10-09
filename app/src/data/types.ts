@@ -46,6 +46,7 @@ export interface Customer {
   since: string; // YYYY-MM-DD
   status: "active" | "paused";
   dropNote: string;
+  dropNoteAt?: string; // when the customer last changed it
   planChanges?: PlanChange[];
   startDate?: string; // first delivery date for new households
   landmark?: string;
@@ -94,6 +95,8 @@ export interface Stop {
   delivered?: LineItem[]; // what actually reached the door; missing means not attempted yet
   charged?: number; // amount debited for this order (after reversals)
   holdReason?: string;
+  fromVan?: LineItem[]; // spares bought from the van this morning (already included in items)
+  releasedAt?: string; // when a held order went back on the van after a top-up
 }
 
 export type ExceptionKind = "missing" | "leak" | "late" | "seal" | "access" | "quality" | "callback";
@@ -155,4 +158,11 @@ export interface WaitEntry {
   litres: number;
   at: string;
   sample?: boolean;
+}
+
+export interface Share {
+  customerId: string;
+  society: string;
+  routeId: string;
+  at: string;
 }

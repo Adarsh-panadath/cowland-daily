@@ -157,3 +157,21 @@ export function planRoute(stops: Stop[], customers: Customer[], route: Route): P
   const after = score(suggested, positions, route);
   return { current, suggested, before, after, positions, better: after.driveMin < before.driveMin - 0.5 };
 }
+
+/**
+ * Extra van minutes to add one more home in a society, inserted at the cheapest point of the
+ * route's current order (detour driving plus the door's service time).
+ */
+export function extraMinutesFor(order: Stop[], customers: Customer[], society: string, routeId: string): number {
+  const byId = new Map(customers.map((c) => [c.id, c]));
+  const pts = [HUB, ...order.slice().sort((a, b) => a.seq - b.seq).map((s) => positionOf(byId.get(s.customerId)!))];
+  const probe = positionOf({ id: `new-${society}`, flat: "NEW", society, routeId } as Customer);
+  let best = Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i]!;
+    const b = pts[i + 1];
+    const add = b ? drive(a, probe) + drive(probe, b) - drive(a, b) : drive(a, probe);
+    best = Math.min(best, add);
+  }
+  return best + PLAN_ASSUMPTIONS.serviceMin;
+}

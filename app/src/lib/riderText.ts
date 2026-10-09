@@ -62,6 +62,8 @@ const t = {
   shiftDone: { en: "Shift complete", mr: "आजचं काम पूर्ण", hi: "आज का काम पूरा" },
   handedAt: { en: "Handed over at", mr: "सुपूर्द केले", hi: "सौंपा गया" },
   newShift: { en: "Next delivery morning (demo)", mr: "पुढची सकाळ (डेमो)", hi: "अगली सुबह (डेमो)" },
+  fromSpare: { en: "from spares", mr: "जास्तीच्या मालातून", hi: "अतिरिक्त माल से" },
+  lockedLast: { en: "Door was locked last time. Call first.", mr: "मागच्या वेळी दार बंद होतं. आधी फोन करा.", hi: "पिछली बार दरवाज़ा बंद था. पहले फ़ोन करें." },
   gaveTitle: { en: "How many did you give?", mr: "किती दिलं?", hi: "कितना दिया?" },
   gaveSub: { en: "Press − for what you could not give", mr: "जे देता आलं नाही त्यासाठी − दाबा", hi: "जो नहीं दे पाए उसके लिए − दबाएं" },
   giveRest: { en: "Give the rest", mr: "बाकीचं द्या", hi: "बाकी दे दें" },

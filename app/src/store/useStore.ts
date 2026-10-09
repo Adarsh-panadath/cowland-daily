@@ -1,10 +1,10 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { Customer, DayOverride, DayStatus, Exception, ExceptionKind, LineItem, Notice, Role, Stop, Txn, WaitEntry } from "../data/types";
+import type { Customer, DayOverride, DayStatus, Exception, ExceptionKind, LineItem, Notice, Role, Share, Stop, Txn, WaitEntry } from "../data/types";
 import { ME, productById, routeById, seedCustomers, seedExceptions, seedNotices, seedStops, seedTxns, seedWaitlist } from "../data/seed";
 import { accounts, type DemoAccount } from "../lib/auth";
 import { addDays, dayKey, demoAt, demoNow, firstEditableDate, fromKey, isLockedDate, setDemoOffset, todayKey, uid } from "../lib/format";
-import { generateStops, itemsOn, lineTotal, mergeItems, planOn, refundCap, shortLines } from "./rules";
+import { generateStops, itemsOn, lineTotal, mergeItems, planOn, refundCap, shortLines, sparesLeft } from "./rules";
 
 export { lineTotal, mergeItems } from "./rules";
 
@@ -27,6 +27,9 @@ export interface RiderShift {
   handedOverAt: string | null;
   returnedBottles: number | null;
 }
+
+/** Result of buying a spare from the van. */
+export type VanResult = "ok" | "gone" | "passed" | "wallet" | "none";
 
 /** Result of a customer edit. Rules are enforced here, not only by disabled buttons. */
 export type EditResult = "ok" | "locked" | "off";
@@ -58,6 +61,7 @@ interface State {
   notices: Notice[];
   overrides: Record<string, Record<string, DayOverride>>; // customerId -> date -> changes
   waitlist: WaitEntry[];
+  shares: Share[];
   nextSeq: Record<string, number>; // customerId -> stop number, waiting for the next morning's run
   cart: LineItem[];
   simOn: boolean;
@@ -84,6 +88,9 @@ interface State {
   reportIssue: (kind: ExceptionKind, message: string, items?: LineItem[]) => void;
   confirmReceived: () => void;
   signup: (input: SignupInput) => string;
+  buyFromVan: (productId: string) => VanResult;
+  updateDropNote: (note: string) => void;
+  shareInvite: () => void;
   joinWaitlist: (e: Omit<WaitEntry, "id" | "at">) => "added" | "duplicate";
 
   // rider
@@ -125,6 +132,13 @@ const freshShift = (loaded: boolean): RiderShift => ({
 const fresh = () => {
   setDemoOffset(0);
   const stops = structuredClone(seedStops);
+  // Sample: a few homes on other routes have already bought spares from their van this morning.
+  for (const [rid, pid] of [["r2", "paneer"], ["r3", "dahi"], ["r5", "a2"], ["r5", "shrikhand"]] as const) {
+    const left = sparesLeft(stops, rid);
+    const st = stops.filter((x) => x.routeId === rid && x.status === "pending" && !x.fromVan).sort((a, b) => a.seq - b.seq)[1];
+    const pick = (left[pid] ?? 0) > 0 ? pid : Object.keys(left).find((k) => left[k]! > 0);
+    if (st && pick) { st.items = mergeItems(st.items, [{ productId: pick, qty: 1 }]); st.fromVan = [{ productId: pick, qty: 1 }]; }
+  }
   // today's ledger entries for drops already made this morning, so refunds can be bounded per order
   const todayDebits: Txn[] = stops
     .filter((s) => s.status === "delivered")
@@ -150,6 +164,7 @@ const fresh = () => {
       },
     } as Record<string, Record<string, DayOverride>>,
     waitlist: structuredClone(seedWaitlist),
+    shares: [] as Share[],
     nextSeq: {} as Record<string, number>,
     cart: [] as LineItem[],
     simOn: false,
@@ -225,12 +240,25 @@ export const useStore = create<State>()(
         return from;
       },
 
+      /** A top-up that covers a held order puts it straight back on this morning's van, at the end of the route. */
       topUp: (amount, method) =>
-        set((s) => ({
-          customers: s.customers.map((c) => (c.id === s.meId ? { ...c, wallet: c.wallet + amount } : c)),
-          txns: ledger(s.txns, [{ id: uid("t"), customerId: s.meId, at: demoNow().toISOString(), kind: "topup", amount, note: `Demo top-up via ${method}` }]),
-          notices: [notice("customer", `₹${amount.toLocaleString("en-IN")} added to your wallet (demo payment).`, "good"), ...s.notices],
-        })),
+        set((s) => {
+          const me = s.customers.find((c) => c.id === s.meId)!;
+          const wallet = me.wallet + amount;
+          const held = s.stops.find((x) => x.customerId === s.meId && x.status === "held");
+          const release = held && wallet >= lineTotal(held.items);
+          const lastSeq = Math.max(0, ...s.stops.filter((x) => held && x.routeId === held.routeId && x.status !== "held").map((x) => x.seq));
+          return {
+            customers: s.customers.map((c) => (c.id === s.meId ? { ...c, wallet } : c)),
+            stops: release ? s.stops.map((x) => (x.id === held.id ? { ...x, status: "pending", seq: lastSeq + 1, holdReason: undefined, releasedAt: new Date().toISOString() } : x)) : s.stops,
+            txns: ledger(s.txns, [{ id: uid("t"), customerId: s.meId, at: demoNow().toISOString(), kind: "topup", amount, note: `Demo top-up via ${method}` }]),
+            notices: [
+              ...(release ? [notice("admin", `${me.flat}, ${me.society} topped up. Held order ${held.orderId} is back on Route ${routeById[held.routeId]!.code}.`, "good"), notice("rider", `New stop added at the end: ${me.flat}, ${me.society}.`, "info")] : []),
+              notice("customer", release ? `₹${amount.toLocaleString("en-IN")} added. Your milk is back on this morning's van.` : `₹${amount.toLocaleString("en-IN")} added to your wallet (demo payment).`, "good"),
+              ...s.notices,
+            ],
+          };
+        }),
 
       cartAdd: (productId, delta) => set((s) => ({ cart: mergeItems(s.cart, [{ productId, qty: delta }]) })),
       cartClear: () => set({ cart: [] }),
@@ -299,6 +327,39 @@ export const useStore = create<State>()(
         });
         return id;
       },
+
+      /** Add one spare from the van to this morning's order, at the normal price. Charged only on delivery. */
+      buyFromVan: (pid) => {
+        const s = get();
+        const stop = s.stops.find((x) => x.customerId === s.meId);
+        if (!stop) return "none";
+        if (stop.status !== "pending") return "passed";
+        if ((sparesLeft(s.stops, stop.routeId)[pid] ?? 0) <= 0) return "gone";
+        const me = s.customers.find((c) => c.id === s.meId)!;
+        const items = mergeItems(stop.items, [{ productId: pid, qty: 1 }]);
+        if (me.wallet < lineTotal(items)) return "wallet";
+        const p = productById[pid]!;
+        set({
+          stops: s.stops.map((x) => (x.id === stop.id ? { ...x, items, fromVan: mergeItems(x.fromVan ?? [], [{ productId: pid, qty: 1 }]) } : x)),
+          notices: [
+            notice("rider", `Add 1 ${p.name} from the spares for ${me.flat}, ${me.society}.`, "info"),
+            ...s.notices,
+          ],
+        });
+        return "ok";
+      },
+
+      updateDropNote: (note) =>
+        set((s) => ({
+          customers: s.customers.map((c) => (c.id === s.meId ? { ...c, dropNote: note.trim() || c.dropNote, dropNoteAt: new Date().toISOString() } : c)),
+          notices: [notice("admin", `${s.customers.find((c) => c.id === s.meId)!.flat}: drop instructions updated.`, "info"), ...s.notices],
+        })),
+
+      shareInvite: () =>
+        set((s) => {
+          const me = s.customers.find((c) => c.id === s.meId)!;
+          return { shares: [...s.shares, { customerId: me.id, society: me.society, routeId: me.routeId, at: new Date().toISOString() }] };
+        }),
 
       joinWaitlist: (e) => {
         const mobile = e.mobile.replace(/\D/g, "").slice(-10);
@@ -451,7 +512,18 @@ export const useStore = create<State>()(
         for (const p of pending) byRoute.set(p.routeId, [...(byRoute.get(p.routeId) ?? []), p]);
         const routesLeft = [...byRoute.keys()];
         const rid = routesLeft[Math.floor(Math.random() * routesLeft.length)]!;
-        const next = byRoute.get(rid)!.sort((a, b) => a.seq - b.seq)[0]!;
+        const queue = byRoute.get(rid)!.sort((a, b) => a.seq - b.seq);
+        const next = queue[0]!;
+        // now and then a home further down the route buys a spare from the van
+        const buyer = queue[1 + Math.floor(Math.random() * Math.max(1, queue.length - 1))];
+        if (buyer && Math.random() < 0.25) {
+          const left = Object.entries(sparesLeft(s.stops, rid)).filter(([, n]) => n > 0);
+          const c = s.customers.find((x) => x.id === buyer.customerId)!;
+          const pick = left[Math.floor(Math.random() * left.length)];
+          if (pick && c.wallet >= lineTotal(buyer.items) + productById[pick[0]]!.price) {
+            set({ stops: s.stops.map((x) => (x.id === buyer.id ? { ...x, items: mergeItems(x.items, [{ productId: pick[0], qty: 1 }]), fromVan: mergeItems(x.fromVan ?? [], [{ productId: pick[0], qty: 1 }]) } : x)) });
+          }
+        }
         if (Math.random() < 0.06) get().flagStop(next.id, "access", "");
         else get().deliver(next.id);
       },
@@ -485,7 +557,13 @@ export const useStore = create<State>()(
         set((s) => ({
           remindedAt: new Date().toISOString(),
           notices: [
-            ...(ids.includes(s.meId) ? [notice("customer", "Your wallet is running low. Add money before 10 PM so tomorrow's milk isn't held.", "warn")] : []),
+            ...(ids.includes(s.meId) ? [(() => {
+              const held = s.stops.find((x) => x.customerId === s.meId && x.status === "held");
+              const w = s.customers.find((c) => c.id === s.meId)!.wallet;
+              return held
+                ? notice("customer", `This morning's milk is held: add ₹${Math.max(0, lineTotal(held.items) - w)} and it goes straight back on the van.`, "warn")
+                : notice("customer", "Your wallet is running low. Add money before 10 PM so tomorrow's milk isn't held.", "warn");
+            })()] : []),
             notice("admin", `Top-up reminder sent to ${ids.length} households.`, "info"),
             ...s.notices,
           ],

@@ -194,6 +194,8 @@ const deliveredWith = (routeId: string, pid: string) =>
   seedStops.find((s) => s.routeId === routeId && s.status === "delivered" && s.customerId !== ME && s.items.some((i) => i.productId === pid && i.qty >= 2)) ??
   seedStops.find((s) => s.routeId === routeId && s.status === "delivered" && s.customerId !== ME)!;
 const exA = deliveredWith("r4", "a2");
+// a Route 04 home still to come this morning, where the door was locked yesterday
+const lockedYesterday = seedStops.filter((s) => s.routeId === "r4" && s.status === "pending" && s.customerId !== ME)[1]!;
 const exB = deliveredWith("r2", "buff");
 
 export const seedExceptions: Exception[] = [
@@ -242,6 +244,18 @@ export const seedExceptions: Exception[] = [
     status: "resolved",
     refund: 0,
     resolution: "Replaced on the spot",
+  },
+  {
+    id: "ex-5",
+    kind: "access",
+    customerId: lockedYesterday.customerId,
+    routeId: "r4",
+    source: "rider",
+    message: "Door locked, no bag outside. Customer didn't pick up the call.",
+    createdAt: ago(60 * 25),
+    status: "resolved",
+    refund: 0,
+    resolution: "Not charged. Customer asked us to leave it with the watchman next time.",
   },
 ];
 

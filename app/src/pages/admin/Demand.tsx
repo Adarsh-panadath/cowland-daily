@@ -1,9 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { Download, MapPinned, Users, Droplets, IndianRupee } from "lucide-react";
 import { useStore } from "../../store/useStore";
 import { areas, WAITLIST_THRESHOLD } from "../../data/areas";
-import { productById } from "../../data/seed";
+import { productById, routes, societies } from "../../data/seed";
+import { extraMinutesFor, PLAN_ASSUMPTIONS } from "../../lib/routePlan";
+import { lineTotal } from "../../store/rules";
 import { inr, num, timeAgo } from "../../lib/format";
 import { Badge, Button, Card, CardHead, Empty } from "../../components/ui";
 
@@ -12,6 +14,25 @@ const PER_LITRE = productById.a2!.price * 2;
 
 export default function Demand() {
   const waitlist = useStore((s) => s.waitlist);
+  const stops = useStore((s) => s.stops);
+  const customers = useStore((s) => s.customers);
+  const shares = useStore((s) => s.shares);
+
+  // Where one more home costs the van the least: societies already on a route
+  const fill = useMemo(() => {
+    const rows: { society: string; route: string; homes: number; minutes: number; perHome: number; invites: number }[] = [];
+    for (const r of routes) {
+      const onVan = stops.filter((x) => x.routeId === r.id && x.status !== "held");
+      if (!onVan.length) continue;
+      const perHome = onVan.reduce((a, x) => a + lineTotal(x.items), 0) / onVan.length;
+      for (const soc of societies[r.id]!) {
+        const homes = customers.filter((c) => c.routeId === r.id && c.society === soc && c.status === "active").length;
+        rows.push({ society: soc, route: r.code, homes, minutes: extraMinutesFor(onVan, customers, soc, r.id), perHome, invites: shares.filter((x) => x.society === soc && x.routeId === r.id).length });
+      }
+    }
+    return rows.sort((a, b) => a.minutes - b.minutes);
+  }, [stops, customers, shares]);
+  const [showAll, setShowAll] = useState(false);
   const unserved = areas.filter((a) => !a.route);
 
   const byArea = useMemo(() => {
@@ -43,8 +64,8 @@ export default function Demand() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight">Demand and waitlist</h1>
-          <p className="text-ink-soft">Families asking for delivery in areas we don't serve yet, from the website's area checker.</p>
+          <h1 className="font-display text-3xl font-bold tracking-tight">Demand</h1>
+          <p className="text-ink-soft">Where the next customers should come from: buildings the vans already pass, then areas on the waitlist.</p>
         </div>
         <Button variant="outline" icon={<Download size={16} />} onClick={exportCsv}>Export CSV</Button>
       </div>
@@ -63,6 +84,35 @@ export default function Demand() {
           </Card>
         ))}
       </div>
+
+      <Card>
+        <CardHead
+          title="Fill the vans first"
+          sub="A home in a building the van already visits adds about a minute and a half to the run. A home in a new area needs a whole new van. Canvass these buildings first."
+          right={<Badge>Illustrative travel model</Badge>}
+        />
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead><tr className="border-y border-milk-2 bg-milk text-left text-ink-soft"><th className="px-5 py-2.5">Building</th><th className="px-3 py-2.5">Route</th><th className="px-3 py-2.5 text-right">Homes now</th><th className="px-3 py-2.5 text-right">Van minutes for one more</th><th className="px-3 py-2.5 text-right">Typical order a day</th><th className="px-5 py-2.5 text-right">Invites shared</th></tr></thead>
+            <tbody className="divide-y divide-milk-2">
+              {(showAll ? fill : fill.slice(0, 8)).map((r) => (
+                <tr key={r.route + r.society}>
+                  <td className="px-5 py-2.5 font-semibold">{r.society}</td>
+                  <td className="px-3 py-2.5 tabular">{r.route}</td>
+                  <td className="px-3 py-2.5 text-right tabular">{r.homes}</td>
+                  <td className="px-3 py-2.5 text-right tabular">{r.minutes.toFixed(1)}</td>
+                  <td className="px-3 py-2.5 text-right tabular">{inr(r.perHome)}</td>
+                  <td className="px-5 py-2.5 text-right tabular">{r.invites || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-xs text-ink-soft">
+          <span>Minutes use the route planner's model: synthetic positions, {PLAN_ASSUMPTIONS.speedKmh} km/h, {PLAN_ASSUMPTIONS.serviceMin} min at the door. Invites come from customers' "Share an invite" button; there's no reward attached.</span>
+          {fill.length > 8 && <button onClick={() => setShowAll(!showAll)} className="font-semibold text-ink underline">{showAll ? "Show fewer" : `Show all ${fill.length}`}</button>}
+        </div>
+      </Card>
 
       <Card>
         <CardHead title="By area" sub={`A new route is worth planning at about ${WAITLIST_THRESHOLD} homes. That bar is an illustrative number; set it from the van's cost per morning and margin per home.`} />

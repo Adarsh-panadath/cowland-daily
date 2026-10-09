@@ -9,6 +9,8 @@ import { ProductArt } from "../../components/ProductArt";
 import { CallSheet } from "../../components/CallSheet";
 import { toast } from "../../store/toast";
 import { tr, speechLang } from "../../lib/riderText";
+import { SPARES_PER_ITEM, packedItems, sparesLeft } from "../../store/rules";
+import { demoAt } from "../../lib/format";
 
 const ROUTE = "r4";
 
@@ -69,6 +71,8 @@ export default function RiderRound() {
   const handled = stops.length - pending.length;
   const next = pending[0];
   const c = next ? cust(next.customerId) : null;
+  // a door that was locked on an earlier morning (not today's attempts)
+  const lockedBefore = useStore((s) => !!next && s.exceptions.some((e) => e.customerId === next.customerId && e.source === "rider" && e.kind === "access" && e.createdAt < demoAt(4, 0).toISOString()));
   const got = stops.reduce((s, x) => s + x.bottlesCollected, 0);
   const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window;
   const issues = stops.filter((s) => s.status === "issue").length;
@@ -155,6 +159,9 @@ export default function RiderRound() {
           <div className="p-5">
             <p className="font-display text-6xl font-bold leading-none tracking-tight">{c.flat}</p>
             <p className="mt-2 text-2xl font-semibold text-ink-3">{c.society}</p>
+            {lockedBefore && (
+              <p className={clsx("mt-3 flex items-center gap-2 rounded-2xl bg-brick-soft px-3 py-2.5 font-bold text-brick", lang !== "en" && "font-mr")}><DoorClosed size={22} className="shrink-0" />{tr("lockedLast", lang)}</p>
+            )}
 
             <div className="mt-5 grid grid-cols-2 gap-3">
               {next.items.map((i) => (
@@ -163,6 +170,7 @@ export default function RiderRound() {
                   <div className="min-w-0">
                     <p className="font-display text-4xl font-bold leading-none">{i.qty}</p>
                     <p className={clsx("line-clamp-2 text-sm leading-tight text-ink-soft", lang !== "en" && "font-mr")}>{itemName(i.productId, lang)}</p>
+                    {next.fromVan?.some((v) => v.productId === i.productId) && <span className={clsx("mt-1 inline-block rounded-full bg-marigold px-2 py-0.5 text-xs font-bold text-ink", lang !== "en" && "font-mr")}>+{next.fromVan.find((v) => v.productId === i.productId)!.qty} {tr("fromSpare", lang)}</span>}
                   </div>
                 </div>
               ))}
@@ -335,10 +343,11 @@ function PartDelivery({ lang, stop, onClose, onDone }: { lang: RiderLang; stop: 
 
 /* ---------- shift pieces ---------- */
 
+/** What was packed at the hub: everyone's orders (before any spares were sold) plus the spares. */
 function crateList(stops: Stop[]) {
   const m = new Map<string, number>();
-  for (const s of stops) for (const i of s.items) m.set(i.productId, (m.get(i.productId) ?? 0) + i.qty);
-  return products.filter((p) => m.has(p.id)).map((p) => ({ p, qty: m.get(p.id)! + 2 }));
+  for (const s of stops) for (const i of packedItems(s)) m.set(i.productId, (m.get(i.productId) ?? 0) + i.qty);
+  return products.filter((p) => m.has(p.id)).map((p) => ({ p, qty: m.get(p.id)! + SPARES_PER_ITEM }));
 }
 
 function ShiftSteps({ lang, loaded, loadedAt, done, total, returned, short, onLoad }: { lang: RiderLang; loaded: boolean; loadedAt: string | null; done: number; total: number; returned: boolean; short: number; onLoad: () => void }) {
@@ -453,7 +462,8 @@ function CrateSheet({ lang, stops, onClose }: { lang: RiderLang; stops: Stop[]; 
 function ReturnToHub({ lang, collected, stops }: { lang: RiderLang; collected: number; stops: Stop[] }) {
   const handover = useStore((s) => s.handover);
   const [n, setN] = useState(collected);
-  const spares = crateList(stops).map(({ p }) => ({ p, qty: 2 }));
+  const left = sparesLeft(stops, ROUTE);
+  const spares = crateList(stops).map(({ p }) => ({ p, qty: Math.max(0, left[p.id] ?? 0) })).filter((x) => x.qty > 0);
   return (
     <div className="rounded-3xl bg-white p-5 shadow-lift">
       <div className="flex items-center gap-3">

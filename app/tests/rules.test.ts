@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { generateStops, itemsOn, lineTotal, netCharged, planOn, refundableOn, shortLines } from "../src/store/rules";
-import { planRoute } from "../src/lib/routePlan";
+import { generateStops, itemsOn, lineTotal, netCharged, packedItems, planOn, refundableOn, shortLines, sparesLeft } from "../src/store/rules";
+import { extraMinutesFor, planRoute } from "../src/lib/routePlan";
 import { routeById, seedCustomers, seedStops } from "../src/data/seed";
 import type { Customer, Txn } from "../src/data/types";
 
@@ -70,4 +70,19 @@ test("route planner never suggests a longer drive than the current order", () =>
     assert.equal(p.suggested.length, stops.length);
     assert.deepEqual(new Set(p.suggested.map((s) => s.id)), new Set(stops.map((s) => s.id)));
   }
+});
+
+test("spares: two of each packed item, sold ones go back if the door fails", () => {
+  const stops = [
+    { ...seedStops.find((s) => s.routeId === "r4" && s.status === "pending")!, items: [{ productId: "a2", qty: 3 }], fromVan: [{ productId: "a2", qty: 1 }] },
+  ];
+  assert.equal(sparesLeft(stops, "r4").a2, 1);
+  assert.deepEqual(packedItems(stops[0]!), [{ productId: "a2", qty: 2 }]);
+  assert.equal(sparesLeft([{ ...stops[0]!, status: "issue" }], "r4").a2, 2);
+});
+
+test("adding a home in a building already on the route costs less than a far one", () => {
+  const order = seedStops.filter((s) => s.routeId === "r4");
+  const near = extraMinutesFor(order, seedCustomers, "Anand Vihar", "r4");
+  assert.ok(near >= 1.4 && near < 4, `near ${near}`);
 });

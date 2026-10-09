@@ -2,7 +2,7 @@ import "./setup";
 import { test, mock, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { useStore } from "../src/store/useStore";
-import { netCharged, refundableOn } from "../src/store/rules";
+import { lineTotal, netCharged, refundableOn, sparesLeft } from "../src/store/rules";
 import { ME } from "../src/data/seed";
 import { addDays, dayKey, firstEditableDate, fromKey, todayKey, tomorrowKey } from "../src/lib/format";
 
@@ -176,4 +176,47 @@ test("held orders stay off the van until the wallet covers them", () => {
   assert.equal(mine?.status, "held");
   S().deliver(mine!.id);
   assert.equal(S().stops.find((s) => s.customerId === ME)!.status, "held", "a held order can't be delivered");
+});
+
+test("spares on the van: normal price, limited stock, charged only on delivery", () => {
+  const mine = S().stops.find((s) => s.customerId === ME)!;
+  // the demo customer's drop is already done this morning, so the van has passed
+  assert.equal(S().buyFromVan("paneer"), mine.status === "pending" ? "ok" : "passed");
+  S().advanceDay();
+  const stop = () => S().stops.find((s) => s.customerId === ME)!;
+  assert.equal(stop().status, "pending");
+  const pid = Object.keys(sparesLeft(S().stops, stop().routeId))[0]!;
+  const w0 = S().customers.find((c) => c.id === ME)!.wallet;
+  assert.equal(S().buyFromVan(pid), "ok");
+  assert.equal(S().buyFromVan(pid), "ok");
+  assert.equal(S().buyFromVan(pid), "gone", "only two spares of each item on the van");
+  assert.equal(S().customers.find((c) => c.id === ME)!.wallet, w0, "nothing charged before delivery");
+  assert.equal(stop().fromVan![0]!.qty, 2);
+  S().deliver(stop().id);
+  assert.equal(stop().charged, lineTotal(stop().items), "charged at the normal price on delivery");
+  assert.equal(S().buyFromVan(pid), "passed");
+});
+
+test("a top-up that covers a held order puts it back on the van", () => {
+  useStore.setState((s) => ({ customers: s.customers.map((c) => (c.id === ME ? { ...c, wallet: 10 } : c)) }));
+  S().advanceDay();
+  const held = S().stops.find((s) => s.customerId === ME)!;
+  assert.equal(held.status, "held");
+  S().topUp(50, "UPI");
+  assert.equal(S().stops.find((s) => s.customerId === ME)!.status, "held", "not enough yet");
+  S().topUp(1000, "UPI");
+  const back = S().stops.find((s) => s.customerId === ME)!;
+  assert.equal(back.status, "pending");
+  assert.ok(back.releasedAt);
+  const last = Math.max(...S().stops.filter((s) => s.routeId === back.routeId && s.id !== back.id && s.status !== "held").map((s) => s.seq));
+  assert.ok(back.seq > last, "added at the end of the route");
+});
+
+test("updated drop instructions are saved for the rider", () => {
+  S().updateDropNote("Leave it with the watchman");
+  const me = S().customers.find((c) => c.id === ME)!;
+  assert.equal(me.dropNote, "Leave it with the watchman");
+  assert.ok(me.dropNoteAt);
+  S().shareInvite();
+  assert.equal(S().shares.at(-1)!.society, me.society);
 });

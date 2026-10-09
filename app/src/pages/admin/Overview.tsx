@@ -3,7 +3,9 @@ import { Link } from "react-router-dom";
 import clsx from "clsx";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Droplets, DoorOpen, TriangleAlert, IndianRupee, Sparkles, TrendingUp, MapPinned, WalletMinimal, CloudRain } from "lucide-react";
-import { useStore, useToday } from "../../store/useStore";
+import { useStore, useToday, lineTotal } from "../../store/useStore";
+import { vanSalesValue } from "../../store/rules";
+import { toast } from "../../store/toast";
 import { productById, products } from "../../data/seed";
 import { dailyTotals } from "../../data/analytics";
 const history = dailyTotals.slice(-30);
@@ -63,6 +65,14 @@ export default function AdminOverview() {
     return [...m.entries()].map(([area, v]) => ({ area, ...v })).sort((a, b) => b.n - a.n)[0];
   }, [waitlist]);
 
+  const van = vanSalesValue(allStops);
+  const heldStops = allStops.filter((x) => x.status === "held");
+  const heldValue = heldStops.reduce((a, x) => a + lineTotal(x.items), 0);
+  const released = allStops.filter((x) => x.releasedAt);
+  const releasedValue = released.reduce((a, x) => a + lineTotal(x.items), 0);
+  const remind = useStore((s) => s.remindLowBalances);
+  const remindedAt = useStore((s) => s.remindedAt);
+
   const insights: { icon: JSX.Element; title: string; body: string; tone: "warn" | "info"; link?: string; linkLabel?: string; sample?: boolean }[] = [
     ...(topArea ? [{ icon: <MapPinned size={16} />, title: `${topArea.area}: ${topArea.n} households waiting`, body: `${Math.round((topArea.n / WAITLIST_THRESHOLD) * 100)}% of the ${WAITLIST_THRESHOLD}-home bar for a new route. They want ${num(topArea.l, 1)} L a day, about ${inr(topArea.l * productById.a2!.price * 2)} of milk.`, tone: topArea.n >= WAITLIST_THRESHOLD ? ("warn" as const) : ("info" as const), link: "/admin/demand", linkLabel: "See demand" }] : []),
     { icon: <WalletMinimal size={16} />, title: `${lowWallet} customers below ₹200`, body: "Send a top-up reminder tonight so their milk isn't held at 10 PM.", tone: lowWallet > 5 ? ("warn" as const) : ("info" as const), link: "/admin/customers", linkLabel: "Review customers" },
@@ -97,6 +107,32 @@ export default function AdminOverview() {
           </Card>
         ))}
       </div>
+
+      <Card>
+        <CardHead title="Extra sales from today's vans" sub="Money the same vans earn on the same run: spares sold at the door, and held orders won back by a top-up." right={<Badge tone="good">No discounts</Badge>} />
+        <div className="grid gap-4 p-5 sm:grid-cols-3">
+          <div className="rounded-2xl bg-milk p-4">
+            <p className="text-sm text-ink-soft">Spares sold from vans</p>
+            <p className="mt-1 font-display text-2xl font-bold tabular">{inr(van.sold)}</p>
+            <p className="text-sm text-ink-soft">{van.units} item{van.units === 1 ? "" : "s"} delivered{van.onTheWay ? `, ${inr(van.onTheWay)} more on the way` : ""}</p>
+          </div>
+          <div className="rounded-2xl bg-milk p-4">
+            <p className="text-sm text-ink-soft">Held orders won back</p>
+            <p className="mt-1 font-display text-2xl font-bold tabular">{inr(releasedValue)}</p>
+            <p className="text-sm text-ink-soft">{released.length} home{released.length === 1 ? "" : "s"} topped up and went back on the van</p>
+          </div>
+          <div className="rounded-2xl bg-milk p-4">
+            <p className="text-sm text-ink-soft">Still held at the hub</p>
+            <p className="mt-1 font-display text-2xl font-bold tabular text-brick">{inr(heldValue)}</p>
+            <p className="text-sm text-ink-soft">{heldStops.length} home{heldStops.length === 1 ? "" : "s"} short on wallet</p>
+            {heldStops.length > 0 && (
+              <button onClick={() => { remind(heldStops.map((x) => x.customerId)); toast(`Top-up reminder with the exact amount sent to ${heldStops.length} home${heldStops.length === 1 ? "" : "s"}.`); }} className="mt-2 text-sm font-semibold text-ink underline decoration-marigold decoration-2 underline-offset-2">
+                {remindedAt ? "Remind again" : "Remind them to top up"}
+              </button>
+            )}
+          </div>
+        </div>
+      </Card>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
         <Card className="flex flex-col">

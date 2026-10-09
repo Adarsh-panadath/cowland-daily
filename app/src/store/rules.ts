@@ -109,3 +109,43 @@ export function refundCap(ex: Exception, stop: Stop | undefined, txns: Txn[]): n
   const paid = ex.items.map((i) => ({ productId: i.productId, qty: Math.min(i.qty, stop.delivered!.find((d) => d.productId === i.productId)?.qty ?? 0) }));
   return Math.min(order, lineTotal(paid));
 }
+
+/* ---------- spares on the van ---------- */
+
+/** Every van leaves the hub with this many spares of each product on its route's orders. */
+export const SPARES_PER_ITEM = 2;
+
+/** The order as it was packed at the hub, before any spares were bought from the van. */
+export const packedItems = (s: Stop) => shortLines(s.items, s.fromVan ?? []);
+
+/**
+ * Spares still on a route's van. Spares sold to homes that were then marked as a problem
+ * (not delivered) go back on the van.
+ */
+export function sparesLeft(stops: Stop[], routeId: string): Record<string, number> {
+  const rs = stops.filter((s) => s.routeId === routeId && s.status !== "held");
+  const left: Record<string, number> = {};
+  for (const s of rs) for (const i of packedItems(s)) left[i.productId] = SPARES_PER_ITEM;
+  for (const s of rs) {
+    if (s.status === "issue") continue;
+    for (const i of s.fromVan ?? []) left[i.productId] = (left[i.productId] ?? 0) - i.qty;
+  }
+  return left;
+}
+
+/** Revenue from spares that reached a door (only delivered lines count). */
+export function vanSalesValue(stops: Stop[]) {
+  let sold = 0;
+  let onTheWay = 0;
+  let units = 0;
+  for (const s of stops) {
+    for (const v of s.fromVan ?? []) {
+      if (s.status === "delivered") {
+        const got = Math.min(v.qty, s.delivered?.find((d) => d.productId === v.productId)?.qty ?? 0);
+        sold += lineTotal([{ productId: v.productId, qty: got }]);
+        units += got;
+      } else if (s.status === "pending") onTheWay += lineTotal([v]);
+    }
+  }
+  return { sold, onTheWay, units };
+}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { Check, CheckCircle2, Smartphone, CreditCard, Landmark } from "lucide-react";
 import { Button, Field, Modal, Stepper, inputCls } from "./ui";
@@ -85,6 +85,7 @@ export function TopUpModal({ open, onClose, suggest }: { open: boolean; onClose:
   const [amount, setAmount] = useState(suggest ?? 2000);
   const [method, setMethod] = useState("UPI");
   const [stage, setStage] = useState<"form" | "paying" | "done">("form");
+  useEffect(() => { if (open && stage === "form") setAmount(suggest ?? 2000); }, [open, suggest]); // eslint-disable-line react-hooks/exhaustive-deps
   const close = () => { onClose(); setTimeout(() => setStage("form"), 300); };
   const pay = () => {
     setStage("paying");
