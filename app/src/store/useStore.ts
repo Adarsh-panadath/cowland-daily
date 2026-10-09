@@ -282,7 +282,7 @@ export const useStore = create<State>()(
     }),
     {
       name: "cowland-daily-demo",
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => {
         const { simOn: _simOn, ...rest } = s;

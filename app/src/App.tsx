@@ -16,6 +16,7 @@ import LiveRoutes from "./pages/admin/LiveRoutes";
 import Tickets from "./pages/admin/Tickets";
 import Customers from "./pages/admin/Customers";
 import Quality from "./pages/admin/Quality";
+import Analytics from "./pages/admin/Analytics";
 
 const shell = (role: Role, el: JSX.Element) => (
   <RequireAuth role={role}>
@@ -39,6 +40,7 @@ export default function App() {
       <Route path="/admin/routes" element={shell("admin", <LiveRoutes />)} />
       <Route path="/admin/tickets" element={shell("admin", <Tickets />)} />
       <Route path="/admin/customers" element={shell("admin", <Customers />)} />
+      <Route path="/admin/analytics" element={shell("admin", <Analytics />)} />
       <Route path="/admin/quality" element={shell("admin", <Quality />)} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

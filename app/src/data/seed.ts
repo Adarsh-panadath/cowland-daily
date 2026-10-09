@@ -32,11 +32,11 @@ export const products: Product[] = [
 export const productById = Object.fromEntries(products.map((p) => [p.id, p])) as Record<string, Product>;
 
 export const routes: Route[] = [
-  { id: "r1", code: "01", name: "Station Road & Kranti Chowk", area: "Central", riderId: "rd1", window: "5:00 – 5:50 AM", color: "#6C8EF5", van: "EV van 01", tempC: 3.6 },
-  { id: "r2", code: "02", name: "CIDCO N-1 to N-6", area: "CIDCO", riderId: "rd2", window: "5:20 – 6:10 AM", color: "#2F7D5B", van: "EV van 03", tempC: 3.9 },
-  { id: "r3", code: "03", name: "Ulkanagari & Beed Bypass", area: "South", riderId: "rd3", window: "5:30 – 6:20 AM", color: "#C2410C", van: "EV van 05", tempC: 4.2 },
-  { id: "r4", code: "04", name: "Samarth Nagar & Garkheda", area: "Samarth Nagar", riderId: "rd4", window: "5:15 – 6:15 AM", color: "#F2A900", van: "EV van 02", tempC: 3.8 },
-  { id: "r5", code: "05", name: "Jalna Road & Mukundwadi", area: "East", riderId: "rd5", window: "5:25 – 6:20 AM", color: "#8E5BD9", van: "EV van 04", tempC: 4.0 },
+  { id: "r1", code: "01", name: "Station Road & Kranti Chowk", area: "Central", riderId: "rd1", window: "5:00 – 5:50 AM", color: "#2a78d6", van: "EV van 01", tempC: 3.6 },
+  { id: "r2", code: "02", name: "CIDCO N-1 to N-6", area: "CIDCO", riderId: "rd2", window: "5:20 – 6:10 AM", color: "#eb6834", van: "EV van 03", tempC: 3.9 },
+  { id: "r3", code: "03", name: "Ulkanagari & Beed Bypass", area: "South", riderId: "rd3", window: "5:30 – 6:20 AM", color: "#1baf7a", van: "EV van 05", tempC: 4.2 },
+  { id: "r4", code: "04", name: "Samarth Nagar & Garkheda", area: "Samarth Nagar", riderId: "rd4", window: "5:15 – 6:15 AM", color: "#eda100", van: "EV van 02", tempC: 3.8 },
+  { id: "r5", code: "05", name: "Jalna Road & Mukundwadi", area: "East", riderId: "rd5", window: "5:25 – 6:20 AM", color: "#e87ba4", van: "EV van 04", tempC: 4.0 },
 ];
 export const routeById = Object.fromEntries(routes.map((r) => [r.id, r])) as Record<string, Route>;
 
@@ -90,7 +90,7 @@ function buildCustomers(): Customer[] {
       society: "Anand Vihar",
       area: "Samarth Nagar",
       routeId: "r4",
-      phone: "+91 98220 41567",
+      phone: "+91 12345 67890",
       plan: [
         { productId: "a2", qty: 3 },
         { productId: "dahi", qty: 1 },
@@ -256,7 +256,7 @@ function buildBatches(): Batch[] {
       fat,
       snf,
       tempC: +between(3.3, 4.3).toFixed(1),
-      litres: Math.round(between(1280, 1490)),
+      litres: Math.round(between(92, 118)),
       urea: "nil",
       starch: "nil",
       chemist: i % 3 === 1 ? "Dr. Vaishali Rao" : "Dr. Meera Karkhanis",

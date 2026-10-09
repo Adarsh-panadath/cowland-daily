@@ -25,7 +25,7 @@ export const accounts: Record<Role, DemoAccount> = {
     color: "#F2A900",
     home: "/customer",
     label: "Customer",
-    id: "9822041567",
+    id: "1234567890",
     secret: "1234",
   },
   rider: {
@@ -36,8 +36,8 @@ export const accounts: Record<Role, DemoAccount> = {
     color: "#2F7D5B",
     home: "/rider",
     label: "Delivery partner",
-    id: "CD-R04",
-    secret: "4404",
+    id: "1234",
+    secret: "1234",
   },
   admin: {
     role: "admin",
@@ -47,8 +47,8 @@ export const accounts: Record<Role, DemoAccount> = {
     color: "#6C8EF5",
     home: "/admin",
     label: "Hub staff",
-    id: "mahesh@cowlanddaily.in",
-    secret: "dawn2026",
+    id: "admin@cowland.in",
+    secret: "admin",
   },
 };
 

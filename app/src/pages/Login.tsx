@@ -106,8 +106,8 @@ function ErrorText({ children }: { children: ReactNode }) {
 /* ---------- Customer: mobile + OTP ---------- */
 function CustomerForm({ onDone, fill }: { onDone: () => void; fill: number }) {
   const acc = accounts.customer;
-  const [phone, setPhone] = useState("");
-  useEffect(() => { if (fill) { setPhone("98220 41567"); setErr(""); } }, [fill]);
+  const [phone, setPhone] = useState(acc.id);
+  useEffect(() => { if (fill) { setPhone(acc.id); setErr(""); } }, [fill]);
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [otp, setOtp] = useState(["", "", "", ""]);
   const [busy, setBusy] = useState(false);
@@ -132,8 +132,8 @@ function CustomerForm({ onDone, fill }: { onDone: () => void; fill: number }) {
       setBusy(false);
       setStep("otp");
       setTimer(30);
-      toast(`Demo SMS: your Cowland code is ${acc.secret}.`, "info");
-      setTimeout(() => boxes.current[0]?.focus(), 50);
+      toast(`SMS: your Cowland code is ${acc.secret}. It has been filled in for you.`, "info");
+      setOtp(acc.secret.split(""));
     }, 800);
   };
 
@@ -197,7 +197,7 @@ function CustomerForm({ onDone, fill }: { onDone: () => void; fill: number }) {
         <span className="mb-1.5 block text-sm font-semibold">Mobile number</span>
         <div className={clsx("flex items-center rounded-xl border bg-white focus-within:ring-2 focus-within:ring-marigold/40", err ? "border-brick" : "border-milk-3 focus-within:border-ink-3")}>
           <span className="border-r border-milk-2 px-3.5 py-3 text-sm font-semibold text-ink-3">+91</span>
-          <input value={phone} onChange={(e) => { setPhone(e.target.value); setErr(""); }} inputMode="tel" autoComplete="tel-national" placeholder="98220 41567" className="w-full rounded-r-xl bg-transparent px-3.5 py-3 text-[15px] focus:outline-none" />
+          <input value={phone} onChange={(e) => { setPhone(e.target.value); setErr(""); }} inputMode="tel" autoComplete="tel-national" placeholder="10-digit mobile number" className="w-full rounded-r-xl bg-transparent px-3.5 py-3 text-[15px] focus:outline-none" />
         </div>
       </label>
       {err && <ErrorText>{err}</ErrorText>}
@@ -210,8 +210,8 @@ function CustomerForm({ onDone, fill }: { onDone: () => void; fill: number }) {
 /* ---------- Rider: ID + PIN ---------- */
 function RiderForm({ onDone, fill }: { onDone: () => void; fill: number }) {
   const acc = accounts.rider;
-  const [id, setId] = useState("");
-  const [pin, setPin] = useState("");
+  const [id, setId] = useState(acc.id);
+  const [pin, setPin] = useState(acc.secret);
   useEffect(() => { if (fill) { setId(acc.id); setPin(acc.secret); setErr(""); } }, [fill, acc]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -229,7 +229,7 @@ function RiderForm({ onDone, fill }: { onDone: () => void; fill: number }) {
     <form onSubmit={submit} noValidate className="space-y-4">
       <label className="block">
         <span className="mb-1.5 block text-sm font-semibold">Rider ID</span>
-        <input value={id} onChange={(e) => { setId(e.target.value); setErr(""); }} placeholder="CD-R04" autoComplete="username" className={clsx(inputCls, "py-3 uppercase", err && "border-brick")} />
+        <input value={id} onChange={(e) => { setId(e.target.value); setErr(""); }} placeholder="On your badge" autoComplete="username" className={clsx(inputCls, "py-3", err && "border-brick")} />
       </label>
       <label className="block">
         <span className="mb-1.5 block text-sm font-semibold">PIN</span>
@@ -244,8 +244,8 @@ function RiderForm({ onDone, fill }: { onDone: () => void; fill: number }) {
 /* ---------- Hub staff: email + password ---------- */
 function StaffForm({ onDone, fill }: { onDone: () => void; fill: number }) {
   const acc = accounts.admin;
-  const [email, setEmail] = useState("");
-  const [pw, setPw] = useState("");
+  const [email, setEmail] = useState(acc.id);
+  const [pw, setPw] = useState(acc.secret);
   useEffect(() => { if (fill) { setEmail(acc.id); setPw(acc.secret); setErr(""); } }, [fill, acc]);
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -264,7 +264,7 @@ function StaffForm({ onDone, fill }: { onDone: () => void; fill: number }) {
     <form onSubmit={submit} noValidate className="space-y-4">
       <label className="block">
         <span className="mb-1.5 block text-sm font-semibold">Work email</span>
-        <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr(""); }} placeholder="you@cowlanddaily.in" autoComplete="username" className={clsx(inputCls, "py-3", err && "border-brick")} />
+        <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr(""); }} placeholder="you@cowland.in" autoComplete="username" className={clsx(inputCls, "py-3", err && "border-brick")} />
       </label>
       <label className="block">
         <span className="mb-1.5 flex justify-between text-sm font-semibold">Password <button type="button" onClick={() => toast("A reset link would be emailed to you. In this demo the password is shown below.", "info")} className="font-medium text-ink-3 hover:text-ink">Forgot?</button></span>
@@ -284,10 +284,10 @@ function StaffForm({ onDone, fill }: { onDone: () => void; fill: number }) {
 
 /* ---------- Demo credentials ---------- */
 function DemoAccounts({ role, onFill }: { role: Role; onFill: () => void }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const a = accounts[role];
   const rows: Record<Role, [string, string][]> = {
-    customer: [["Mobile", "98220 41567"], ["Code", a.secret]],
+    customer: [["Mobile", a.id], ["OTP", a.secret]],
     rider: [["Rider ID", a.id], ["PIN", a.secret]],
     admin: [["Email", a.id], ["Password", a.secret]],
   };

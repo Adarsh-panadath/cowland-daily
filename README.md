@@ -4,6 +4,7 @@ An interactive product prototype for **Cowland Daily**, a dawn A2-milk subscript
 
 - **Customer app**: two-week milk diary (skip a day, add extras, 10 PM lock), vacation pause, regular-order editor, shop with basket and delivery-date picker, wallet with top-up flow and spend chart, downloadable statement, problem reports with status tracking.
 - **Rider app**: next-door card in route order, one-tap delivered with undo, empty-bottle counter, problem flags, crate stock that counts down, hub broadcasts, shift summary with pay breakdown.
+- **Hub analytics**: KPI scorecard with period-over-period change, trend with moving average and prior-period overlay, 14-day demand forecast with a likely range, route P&L with a revenue-to-profit waterfall, cohort retention, customer segments, churn-risk list, acquisition funnel, product mix and weekday heatmap, and a what-if scenario planner with 12-month projection and sensitivity chart. Filter by period and route, export to CSV.
 - **Hub dashboard**: live KPIs, 30-day trends, product mix, 7-day forecast, suggestions panel, live route map with a running simulation, ticket queue with refunds, searchable customer list with CSV export, lab quality trends and batch log.
 
 Actions flow between portals: a customer's report lands in the hub's ticket queue, a hub refund appears in the customer's wallet, and a rider's delivery moves the hub's route map.
@@ -14,9 +15,11 @@ Each portal has its own sign-in at `/#/login`, and a signed-in person only sees 
 
 | Account | How they sign in | Demo login |
 |---|---|---|
-| Customer (Aditi Deshmukh) | Mobile number + one-time code | 98220 41567, code 1234 |
-| Rider (Ganesh Shinde) | Rider ID + PIN | CD-R04, PIN 4404 |
-| Hub staff (Mahesh Kale) | Work email + password | mahesh@cowlanddaily.in, dawn2026 |
+| Customer (Aditi Deshmukh) | Mobile number + one-time code | 1234567890, OTP 1234 |
+| Rider (Ganesh Shinde) | Rider ID + PIN | 1234, PIN 1234 |
+| Hub staff (Mahesh Kale) | Work email + password | admin@cowland.in, admin |
+
+The demo details are pre-filled on each sign-in form.
 
 This is a static prototype, so credentials are checked in the browser. A real launch would verify them on a server (SMS OTP gateway, hashed PINs and passwords, server sessions).
 

@@ -35,7 +35,7 @@ export default function Quality() {
               ["Fat", `${today.fat}%`, "Target 4.5–5.0%"],
               ["SNF", `${today.snf}%`, "FSSAI min 8.5%"],
               ["Chiller temperature", `${today.tempC}°C`, "Must stay under 4.5°C"],
-              ["Volume", `${num(today.litres)} L`, "From 212 cows"],
+              ["Volume", `${num(today.litres)} L`, "From 34 cows"],
               ["Urea", "Not detected", "Strip test"],
               ["Starch", "Not detected", "Iodine test"],
             ].map(([k, v, s]) => (

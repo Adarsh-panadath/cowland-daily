@@ -4,7 +4,9 @@ import clsx from "clsx";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Droplets, DoorOpen, TriangleAlert, IndianRupee, Sparkles, TrendingUp, MapPinned, WalletMinimal, CloudRain } from "lucide-react";
 import { useStore } from "../../store/useStore";
-import { history, products } from "../../data/seed";
+import { products } from "../../data/seed";
+import { dailyTotals } from "../../data/analytics";
+const history = dailyTotals.slice(-30);
 import { addDays, dayKey, dayMonth, inr, num, weekday, clock } from "../../lib/format";
 import { Badge, Card, CardHead, Progress, Segmented } from "../../components/ui";
 import { BroadcastButton, SimToggle, routeStats } from "./shared";
@@ -94,7 +96,7 @@ export default function AdminOverview() {
                 </defs>
                 <CartesianGrid vertical={false} stroke="#ECEEF3" />
                 <XAxis dataKey="label" tickLine={false} axisLine={false} interval={4} />
-                <YAxis tickLine={false} axisLine={false} width={56} tickFormatter={(v: number) => (metric === "revenue" ? `₹${Math.round(v / 1000)}k` : num(v))} domain={["dataMin - 80", "auto"]} />
+                <YAxis tickLine={false} axisLine={false} width={56} tickFormatter={(v: number) => (metric === "revenue" ? `₹${(v / 1000).toFixed(1)}k` : num(v))} domain={["auto", "auto"]} />
                 <Tooltip formatter={(v: number) => [metric === "revenue" ? inr(v) : `${num(v)} L`, metric === "revenue" ? "Revenue" : "Litres"]} contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 24px -12px rgba(20,33,61,.35)" }} />
                 <Area type="monotone" dataKey={metric} stroke="#14213D" strokeWidth={2.5} fill="url(#hist)" />
               </AreaChart>
@@ -158,7 +160,7 @@ export default function AdminOverview() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={forecast} margin={{ left: -10 }}>
                 <XAxis dataKey="day" tickLine={false} axisLine={false} fontSize={11} />
-                <YAxis tickLine={false} axisLine={false} domain={[1000, "auto"]} />
+                <YAxis tickLine={false} axisLine={false} domain={["auto", "auto"]} />
                 <Tooltip formatter={(v: number) => [`${num(v)} L`, "Forecast"]} cursor={{ fill: "#F6F7F9" }} contentStyle={{ borderRadius: 12, border: "none" }} />
                 <Bar dataKey="litres" radius={[8, 8, 0, 0]}>
                   {forecast.map((f) => <Cell key={f.day} fill={f.fest ? "#F2A900" : "#2B3A67"} />)}

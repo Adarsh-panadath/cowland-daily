@@ -3,7 +3,7 @@ import { NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
   Bell, CalendarDays, ShoppingBasket, Wallet, ReceiptText, LifeBuoy, Route as RouteIcon, BarChart3,
-  LayoutDashboard, Users, TriangleAlert, FlaskConical, RotateCcw, Truck, Home, X, CheckCircle2, Info, LogOut, ChevronDown,
+  LayoutDashboard, Users, TriangleAlert, FlaskConical, RotateCcw, Truck, X, CheckCircle2, Info, LogOut, ChevronDown, ChartNoAxesCombined,
 } from "lucide-react";
 import { useStore } from "../../store/useStore";
 import { accounts } from "../../lib/auth";
@@ -29,6 +29,7 @@ const nav: Record<Role, NavItem[]> = {
   ],
   admin: [
     { to: "/admin", label: "Overview", icon: <LayoutDashboard size={18} />, end: true },
+    { to: "/admin/analytics", label: "Analytics", icon: <ChartNoAxesCombined size={18} /> },
     { to: "/admin/routes", label: "Live routes", short: "Routes", icon: <Truck size={18} /> },
     { to: "/admin/tickets", label: "Tickets", icon: <TriangleAlert size={18} /> },
     { to: "/admin/customers", label: "Customers", icon: <Users size={18} /> },
@@ -111,7 +112,7 @@ function AccountMenu({ role }: { role: Role }) {
             <div className="min-w-0 leading-tight">
               <p className="truncate font-semibold text-ink">{acc.name}</p>
               <p className="truncate text-xs text-ink-soft">{acc.sub}</p>
-              <p className="mt-1 truncate text-xs text-ink-3">{role === "customer" ? "+91 98220 41567" : acc.id}</p>
+              <p className="mt-1 truncate text-xs text-ink-3">{role === "customer" ? `+91 ${acc.id}` : role === "rider" ? `Rider ID ${acc.id}` : acc.id}</p>
             </div>
           </div>
           <button role="menuitem" onClick={() => { reset(); setOpen(false); }} className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-ink hover:bg-milk">
@@ -274,18 +275,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-milk-2 bg-white/95 backdrop-blur lg:hidden" aria-label="Sections">
         <div className="mx-auto flex max-w-lg justify-around px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2">
           {items.map((i) => (
-            <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => clsx("flex min-w-[56px] flex-col items-center gap-1 rounded-xl px-2 py-1 text-[11px] font-semibold", isActive ? "text-ink" : "text-ink-soft")}>
+            <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => clsx("flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-1 py-1 text-[11px] font-semibold", isActive ? "text-ink" : "text-ink-soft")}>
               {({ isActive }) => (
                 <>
-                  <span className={clsx("grid h-7 w-12 place-items-center rounded-full", isActive && "bg-marigold-soft")}>{i.icon}</span>
+                  <span className={clsx("grid h-7 w-11 place-items-center rounded-full", isActive && "bg-marigold-soft")}>{i.icon}</span>
                   {i.short ?? i.label}
                 </>
               )}
             </NavLink>
           ))}
-          <Link to="/" className="flex min-w-[56px] flex-col items-center gap-1 px-2 py-1 text-[11px] font-semibold text-ink-soft">
-            <span className="grid h-7 w-12 place-items-center"><Home size={18} /></span>Site
-          </Link>
         </div>
       </nav>
       <Toaster />
