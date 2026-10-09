@@ -10,6 +10,10 @@ A front-end prototype for **Cowland Daily**, an artisanal A2 milk subscription a
 | Delivery Partner Round | `rider.html` | Rider shift header, round progress, door-by-door drop sheet, crate load manifest, empty-bottle recovery counter, field incident tools |
 | Admin Hub & AI Intelligence | `admin.html` | Dispatch KPIs, dawn dispatch curve, AI route & demand recommendations, live route monitor, exception resolution, lab QA certificate |
 
+## Live site
+
+https://adarsh-panadath.github.io/cowland-daily/
+
 ## Running it
 
 No build step. Open `index.html` in a browser, or serve the folder:
