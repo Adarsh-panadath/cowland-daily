@@ -14,8 +14,10 @@ import { useStore, lineTotal } from "../../store/useStore";
 import { dayMonth, inr, num } from "../../lib/format";
 import { Badge, Button, Card, CardHead, Segmented } from "../../components/ui";
 import { toast } from "../../store/toast";
+import { CallSheet } from "../../components/CallSheet";
+import { DeliveryAnalytics } from "./DeliveryAnalytics";
 
-type Tab = "performance" | "routes" | "customers" | "products" | "scenarios";
+type Tab = "delivery" | "performance" | "routes" | "customers" | "products" | "scenarios";
 type Period = "7" | "30" | "90";
 
 const tip = { contentStyle: { borderRadius: 12, border: "none", boxShadow: "0 8px 24px -12px rgba(20,33,61,.35)", fontSize: 13 }, cursor: { fill: "#F6F7F9" } };
@@ -102,7 +104,7 @@ function ViewToggle({ table, setTable }: { table: boolean; setTable: (b: boolean
 /* =================================================================== */
 
 export default function Analytics() {
-  const [tab, setTab] = useState<Tab>("performance");
+  const [tab, setTab] = useState<Tab>("delivery");
   const [period, setPeriod] = useState<Period>("30");
   const [route, setRoute] = useState("all");
   const p = Number(period);
@@ -125,7 +127,7 @@ export default function Analytics() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight">Analytics</h1>
-          <p className="text-ink-soft">Six months of operating history. Every number compares against the period just before it.</p>
+          <p className="text-ink-soft">Where mornings go wrong, what it costs, and what to fix first. Numbers compare against the period just before.</p>
         </div>
         <Button variant="outline" icon={<Download size={16} />} onClick={exportView}>Export this view</Button>
       </div>
@@ -134,6 +136,7 @@ export default function Analytics() {
       <div className="sticky top-16 z-20 -mx-4 flex flex-col gap-3 border-b border-milk-2 bg-milk/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-3 lg:flex-row lg:items-center">
         <div className="scrollbar-none overflow-x-auto">
           <Segmented value={tab} onChange={setTab} options={[
+            { value: "delivery", label: "Delivery" },
             { value: "performance", label: "Performance" },
             { value: "routes", label: "Route economics" },
             { value: "customers", label: "Customers" },
@@ -156,6 +159,7 @@ export default function Analytics() {
         </div>
       </div>
 
+      {tab === "delivery" && <DeliveryAnalytics period={p} route={route} />}
       {tab === "performance" && <Performance cur={curDays} prev={prevDays} period={p} route={route} />}
       {tab === "routes" && <RoutesTab period={p} />}
       {tab === "customers" && <CustomersTab />}
@@ -448,6 +452,9 @@ const blueFor = (v: number) => blue[Math.min(blue.length - 1, Math.max(0, Math.f
 
 function CustomersTab() {
   const customers = useStore((s) => s.customers);
+  const offers = useStore((s) => s.offers);
+  const sendOffer = useStore((s) => s.sendOffer);
+  const [calling, setCalling] = useState<{ name: string; sub: string } | null>(null);
   const scored = useMemo(() => scoreCustomers(customers, (c) => lineTotal(c.plan)), [customers]);
   const segs = (Object.keys(segmentColors) as Segment[]).map((sg) => {
     const list = scored.filter((x) => x.segment === sg);
@@ -544,8 +551,10 @@ function CustomersTab() {
                     <td className="px-3 py-2.5 text-right tabular">{inr(x.daily * 30)}</td>
                     <td className="px-5 py-2.5 text-right">
                       <div className="inline-flex gap-1">
-                        <button aria-label={`Send an offer to ${x.c.contact}`} onClick={() => toast(`Offer sent to ${x.c.contact}: 1 free bottle on their next top-up.`)} className="grid h-8 w-8 place-items-center rounded-lg bg-marigold-soft text-marigold-deep hover:bg-marigold hover:text-ink"><Gift size={15} /></button>
-                        <a aria-label={`Call ${x.c.contact}`} href={`tel:${x.c.phone.replace(/\s/g, "")}`} className="grid h-8 w-8 place-items-center rounded-lg bg-milk-2 text-ink hover:bg-milk-3"><Phone size={15} /></a>
+                        {offers[x.c.id]
+                          ? <span className="inline-flex h-8 items-center rounded-lg bg-neem-soft px-2 text-xs font-semibold text-neem-deep">Offer sent</span>
+                          : <button aria-label={`Send an offer to ${x.c.contact}`} title="Send a free-bottle offer" onClick={() => { sendOffer(x.c.id); toast(`Offer sent to ${x.c.contact}: a free bottle with their next top-up.`); }} className="grid h-8 w-8 place-items-center rounded-lg bg-marigold-soft text-marigold-deep hover:bg-marigold hover:text-ink"><Gift size={15} /></button>}
+                        <button aria-label={`Call ${x.c.contact}`} title="Call" onClick={() => setCalling({ name: x.c.contact, sub: `${x.c.flat}, ${x.c.society}` })} className="grid h-8 w-8 place-items-center rounded-lg bg-milk-2 text-ink hover:bg-milk-3"><Phone size={15} /></button>
                       </div>
                     </td>
                   </tr>
@@ -554,6 +563,7 @@ function CustomersTab() {
             </table>
           </div>
         </Card>
+        <CallSheet name={calling?.name ?? null} sub={calling?.sub} onClose={() => setCalling(null)} />
         <Card>
           <CardHead title="Lifetime value spread" sub="Households by total spend so far" />
           <div className="h-72 p-3 pr-5">

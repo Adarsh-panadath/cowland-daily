@@ -6,6 +6,7 @@ import { productById, riderById } from "../../data/seed";
 import type { Stop } from "../../data/types";
 import { Avatar, Badge, Card, CardHead, Progress } from "../../components/ui";
 import { SimToggle, routeStats } from "./shared";
+import { CallSheet } from "../../components/CallSheet";
 import { clock, initials } from "../../lib/format";
 
 function snake(n: number) {
@@ -59,6 +60,7 @@ export default function LiveRoutes() {
   const rs = routeStats(stops);
   const [sel, setSel] = useState("r4");
   const [picked, setPicked] = useState<string | null>(null);
+  const [calling, setCalling] = useState(false);
   const cur = rs.find((r) => r.route.id === sel)!;
   const rider = riderById[cur.route.riderId]!;
   const rStops = stops.filter((s) => s.routeId === sel).sort((a, b) => a.seq - b.seq);
@@ -110,7 +112,7 @@ export default function LiveRoutes() {
                 <p className="font-semibold">{rider.name}</p>
                 <p className="text-sm text-ink-soft">{rider.vehicle}, rated {rider.rating}</p>
               </div>
-              <a href={`tel:${rider.phone.replace(/\s/g, "")}`} aria-label={`Call ${rider.name}`} className="grid h-10 w-10 place-items-center rounded-xl bg-milk-2 text-ink hover:bg-milk-3"><Phone size={17} /></a>
+              <button onClick={() => setCalling(true)} aria-label={`Call ${rider.name}`} className="grid h-10 w-10 place-items-center rounded-xl bg-milk-2 text-ink hover:bg-milk-3"><Phone size={17} /></button>
             </div>
             <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-xl bg-milk p-3"><dt className="flex items-center gap-1 text-ink-soft"><Thermometer size={13} /> Crate</dt><dd className="font-display text-xl font-bold">{cur.route.tempC}°C</dd></div>
@@ -137,6 +139,7 @@ export default function LiveRoutes() {
         </div>
       </div>
 
+      <CallSheet name={calling ? rider.name : null} sub={`Route ${cur.route.code}, ${rider.vehicle}`} color={cur.route.color} onClose={() => setCalling(false)} />
       <Card>
         <CardHead title="Stop sequence" />
         <div className="mt-3 overflow-x-auto">

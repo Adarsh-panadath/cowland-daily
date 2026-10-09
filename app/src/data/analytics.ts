@@ -237,3 +237,96 @@ export function movingAvg(values: number[], n = 7) {
     return w.length < n ? null : sum(w) / n;
   });
 }
+
+/* =================== Delivery-level history (last 90 days) =================== */
+
+export const PROMISE_MIN = 375; // 6:15 AM: the "before 6:15" promise
+export const lateCauses = ["Gate entry delay", "Late dispatch from hub", "Rain", "Van charging or breakdown", "Road work or traffic", "Hard-to-find address", "Too many stops for the window"] as const;
+export type LateCause = (typeof lateCauses)[number];
+export const issueTypes = ["Door locked, no bag", "Item missing", "Leak or broken", "Wrong item", "Late delivery complaint"] as const;
+export type IssueType = (typeof issueTypes)[number];
+
+const routeStart: Record<string, number> = { r1: 300, r2: 316, r3: 327, r4: 315, r5: 322 };
+const routeSocieties: Record<string, string[]> = {
+  r1: ["Bansilal Nagar", "Usmanpura Heights", "Padampura Residency", "Kranti Chowk Towers"],
+  r2: ["Avishkar Colony", "Shivaji Nagar", "CIDCO N-4 Sector B", "Jijamata Colony"],
+  r3: ["Ulkanagari Shanti Niwas", "Mahanubhav Society", "Sutgirni Chowk Apts", "Beed Bypass Greens"],
+  r4: ["Anand Vihar", "Mayur Park", "Gajanan Society", "Garkheda Parisar"],
+  r5: ["Mukundwadi Gardens", "Jalna Road Residency", "Chikalthana Enclave", "Kamgar Colony"],
+};
+const delayOdds: Record<string, number> = { r1: 0.06, r2: 0.12, r3: 0.24, r4: 0.1, r5: 0.2 };
+const causeWeights: Record<string, number[]> = {
+  // order matches lateCauses
+  r1: [1, 3, 2, 1, 2, 0.5, 0],
+  r2: [4, 2, 2, 1, 3, 1, 0],
+  r3: [6, 2, 3, 2, 1, 1, 0],
+  r4: [2, 3, 2, 1, 1, 1, 0],
+  r5: [1, 2, 3, 3, 4, 2, 0],
+};
+const pickWeighted = <T,>(items: readonly T[], w: number[], rnd: () => number) => {
+  const total = w.reduce((s, x) => s + x, 0);
+  let x = rnd() * total;
+  for (let i = 0; i < items.length; i++) { x -= w[i]!; if (x <= 0) return items[i]!; }
+  return items[items.length - 1]!;
+};
+
+export interface DropRec {
+  date: string;
+  route: string;
+  society: string;
+  home: string; // stable household key
+  seq: number;
+  minute: number; // minutes after midnight
+  late: boolean;
+  cause: LateCause | null;
+  issue: IssueType | null;
+}
+
+export const drops: DropRec[] = (() => {
+  const rd = prng(615);
+  const out: DropRec[] = [];
+  const dates = allDates.slice(-90);
+  const rainy = new Set(dates.filter(() => rd() < 0.12));
+  for (const date of dates) {
+    for (const rt of routes) {
+      const day = dayRows.find((x) => x.date === date && x.route === rt.id)!;
+      const n = Math.max(8, Math.round(day.drops));
+      const rain = rainy.has(date);
+      const event = rd() < delayOdds[rt.id]! || (rain && rd() < 0.6);
+      const cause: LateCause | null = event ? (rain && rd() < 0.7 ? "Rain" : pickWeighted(lateCauses, causeWeights[rt.id]!, rd)) : null;
+      const delay = event ? (cause === "Late dispatch from hub" ? 14 + rd() * 16 : cause === "Van charging or breakdown" ? 20 + rd() * 25 : 8 + rd() * 18) : 0;
+      const delayFrom = cause === "Late dispatch from hub" ? 0 : Math.floor(n * (0.2 + rd() * 0.5));
+      const pace = 2.25 + rd() * 0.45 + (rain ? 0.35 : 0);
+      for (let i = 0; i < n; i++) {
+        const society = routeSocieties[rt.id]![Math.min(3, Math.floor((i / n) * 4))]!;
+        const minute = routeStart[rt.id]! + 6 + i * pace + (i >= delayFrom ? delay : 0) + (rd() * 2 - 1) * 1.5;
+        const late = minute > PROMISE_MIN;
+        let issueP = 0.007 + (late ? 0.03 : 0) + (society === "Mahanubhav Society" ? 0.025 : 0) + (society === "Kamgar Colony" ? 0.015 : 0) + (rain ? 0.006 : 0);
+        if (rt.id === "r3" && society === "Beed Bypass Greens") issueP += 0.01;
+        let issue: IssueType | null = null;
+        if (rd() < issueP) {
+          issue = late && rd() < 0.45 ? "Late delivery complaint"
+            : society === "Mahanubhav Society" && rd() < 0.6 ? "Door locked, no bag"
+            : pickWeighted(issueTypes.slice(0, 4), [3, 3, 2, 1], rd);
+        }
+        out.push({ date, route: rt.id, society, home: `${rt.id}-${i}`, seq: i + 1, minute, late, cause: late ? cause ?? "Too many stops for the window" : null, issue });
+      }
+    }
+  }
+  return out;
+})();
+
+/** Cancellation rate next month by how many late or problem deliveries a home had (fitted on last six months) */
+export const churnByExperience = [
+  { bucket: "No bad mornings", rate: 1.8 },
+  { bucket: "1 bad morning", rate: 3.1 },
+  { bucket: "2–3 bad mornings", rate: 7.4 },
+  { bucket: "4 or more", rate: 16.2 },
+];
+export const churnRateFor = (bad: number) => (bad === 0 ? 1.8 : bad === 1 ? 3.1 : bad <= 3 ? 7.4 : 16.2) / 100;
+export const AVG_REFUND = 46;
+export const HOME_MONTHLY_VALUE = 4080; // average revenue per active home per month
+export const fmtClock = (m: number) => {
+  const h = Math.floor(m / 60), mm = Math.floor(m % 60);
+  return `${h}:${String(mm).padStart(2, "0")} AM`;
+};

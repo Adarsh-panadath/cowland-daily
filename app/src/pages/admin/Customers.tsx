@@ -7,11 +7,14 @@ import type { Customer } from "../../data/types";
 import { dayMonth, inr, initials } from "../../lib/format";
 import { Avatar, Badge, Button, Card, Drawer, Empty, inputCls } from "../../components/ui";
 import { toast } from "../../store/toast";
+import { CallSheet } from "../../components/CallSheet";
 
 type SortKey = "name" | "wallet" | "daily" | "since";
 
 export default function Customers() {
   const customers = useStore((s) => s.customers);
+  const remind = useStore((s) => s.remindLowBalances);
+  const remindedAt = useStore((s) => s.remindedAt);
   const [q, setQ] = useState("");
   const [route, setRoute] = useState("all");
   const [status, setStatus] = useState<"all" | "active" | "paused" | "low">("all");
@@ -68,7 +71,9 @@ export default function Customers() {
           <p className="text-ink-soft">{customers.filter((c) => c.status === "active").length} active households, about {inr(mrr)} in monthly orders.</p>
         </div>
         <div className="flex gap-2">
-          {low > 0 && <Button variant="outline" icon={<BellRing size={16} />} onClick={() => toast(`Top-up reminder sent to ${low} households by WhatsApp.`)}>Remind {low} low balances</Button>}
+          {low > 0 && (remindedAt && Date.now() - new Date(remindedAt).getTime() < 3 * 3600e3
+            ? <Button variant="outline" icon={<BellRing size={16} />} disabled>Reminded at {new Date(remindedAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}</Button>
+            : <Button variant="outline" icon={<BellRing size={16} />} onClick={() => { const ids = customers.filter((c) => c.status === "active" && c.wallet < 200).map((c) => c.id); remind(ids); toast(`Top-up reminder sent to ${ids.length} households.`); }}>Remind {low} low balances</Button>)}
           <Button variant="soft" icon={<Download size={16} />} onClick={exportCsv}>Export</Button>
         </div>
       </div>
@@ -142,11 +147,12 @@ function CustomerDrawer({ c, onClose }: { c: Customer | null; onClose: () => voi
   const toggle = useStore((s) => s.toggleCustomer);
   const stop = useStore((s) => (c ? s.stops.find((x) => x.customerId === c.id) : undefined));
   const tickets = useStore((s) => (c ? s.exceptions.filter((e) => e.customerId === c.id) : []));
+  const [calling, setCalling] = useState(false);
   if (!c) return null;
   const r = routeById[c.routeId]!;
   return (
     <Drawer open onClose={onClose} title={c.contact}
-      footer={<div className="flex gap-2"><Button variant={c.status === "active" ? "danger" : "primary"} className="flex-1" onClick={() => { toggle(c.id); toast(c.status === "active" ? `${c.name} paused from tomorrow.` : `${c.name} resumed from tomorrow.`); }}>{c.status === "active" ? "Pause deliveries" : "Resume deliveries"}</Button><a href={`tel:${c.phone.replace(/\s/g, "")}`} className="flex-1"><Button variant="soft" className="w-full">Call</Button></a></div>}>
+      footer={<div className="flex gap-2"><Button variant={c.status === "active" ? "danger" : "primary"} className="flex-1" onClick={() => { toggle(c.id); toast(c.status === "active" ? `${c.name} paused from tomorrow.` : `${c.name} resumed from tomorrow.`); }}>{c.status === "active" ? "Pause deliveries" : "Resume deliveries"}</Button><Button variant="soft" className="flex-1" onClick={() => setCalling(true)}>Call</Button></div>}>
       <div className="space-y-4 pb-6">
         <div className="flex items-center gap-3">
           <Avatar text={initials(c.contact)} color={r.color} size={48} />
@@ -161,6 +167,7 @@ function CustomerDrawer({ c, onClose }: { c: Customer | null; onClose: () => voi
         <div><p className="text-sm font-semibold">Regular order</p><ul className="mt-1 text-sm">{c.plan.map((p) => <li key={p.productId}>{p.qty} × {productById[p.productId]!.name}</li>)}</ul></div>
         <div><p className="text-sm font-semibold">Doorstep note</p><p className="mt-1 text-sm text-ink-soft">{c.dropNote}</p></div>
         <div><p className="text-sm font-semibold">This morning</p><p className="mt-1 text-sm text-ink-soft">{!stop ? "No delivery today (paused)." : stop.status === "delivered" ? "Delivered." : stop.status === "issue" ? `Rider flagged: ${stop.issueNote}` : "Still on the van."}</p></div>
+        <CallSheet name={calling ? c.contact : null} sub={`${c.flat}, ${c.society}`} color={r.color} onClose={() => setCalling(false)} />
         <div><p className="text-sm font-semibold">Tickets</p><p className="mt-1 text-sm text-ink-soft">{tickets.length ? `${tickets.length} total, ${tickets.filter((t) => t.status === "open").length} open` : "None"}</p></div>
       </div>
     </Drawer>

@@ -6,6 +6,8 @@ import { ME } from "../../data/seed";
 import { inr, timeAgo } from "../../lib/format";
 import { Badge, Button, Card, CardHead, Empty } from "../../components/ui";
 import { ReportModal } from "../../components/customer";
+import { CallSheet } from "../../components/CallSheet";
+import { toast } from "../../store/toast";
 
 const faqs = [
   ["When do I need to make changes by?", "Changes for tomorrow lock at 10 PM tonight, when the hub starts packing crates. Anything after that applies from the day after."],
@@ -19,6 +21,9 @@ export default function Help() {
   const tickets = useStore((s) => s.exceptions.filter((e) => e.customerId === ME));
   const [open, setOpen] = useState(false);
   const [faq, setFaq] = useState<number | null>(0);
+  const [calling, setCalling] = useState(false);
+  const report = useStore((s) => s.reportIssue);
+  const pendingCallback = tickets.some((t) => t.kind === "callback" && t.status === "open");
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -71,8 +76,10 @@ export default function Help() {
           <p className="font-display text-lg font-semibold">Talk to the dawn desk</p>
           <p className="mt-1 text-sm text-ink-soft">Open 4:30 AM to 10:30 PM, every day.</p>
           <div className="mt-4 grid gap-2">
-            <a href="tel:+912402345890"><Button variant="outline" className="w-full" icon={<Phone size={16} />}>Call +91 240 2345 890</Button></a>
-            <a href="https://wa.me/919422012345" target="_blank" rel="noreferrer"><Button variant="soft" className="w-full" icon={<MessageCircle size={16} />}>WhatsApp us</Button></a>
+            <Button variant="outline" className="w-full" icon={<Phone size={16} />} onClick={() => setCalling(true)}>Call the dawn desk</Button>
+            <Button variant="soft" className="w-full" icon={<MessageCircle size={16} />} disabled={pendingCallback} onClick={() => { report("callback", "Please call me back about my subscription."); toast("Callback requested. The hub team will ring you within 15 minutes."); }}>
+              {pendingCallback ? "Callback requested" : "Ask us to call you back"}
+            </Button>
           </div>
         </Card>
         <Card className="bg-marigold-soft p-5 shadow-none">
@@ -82,6 +89,7 @@ export default function Help() {
         </Card>
       </div>
       <ReportModal open={open} onClose={() => setOpen(false)} />
+      <CallSheet name={calling ? "Cowland dawn desk" : null} sub="Samarth Nagar hub" onClose={() => setCalling(false)} />
     </div>
   );
 }

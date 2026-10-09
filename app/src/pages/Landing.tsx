@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { MapPin, ShieldCheck, Recycle, Clock3, ArrowUpRight, Smartphone, Truck, LayoutDashboard, Check } from "lucide-react";
 import { Logo } from "../components/Logo";
 import { DawnJourney } from "../components/DawnJourney";
@@ -30,8 +30,16 @@ function useOpen() {
   };
 }
 
+/** Hash routing owns the URL fragment, so in-page links scroll instead of changing the hash. */
+const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
 export default function Landing() {
   const open = useOpen();
+  const loc = useLocation();
+  useEffect(() => {
+    const target = (loc.state as { scrollTo?: string } | null)?.scrollTo;
+    if (target) setTimeout(() => jump(target), 80);
+  }, [loc.state]);
   const [area, setArea] = useState(areas[0]!.id);
   const a = areas.find((x) => x.id === area)!;
   const r = routes.find((x) => x.id === a.route);
@@ -46,10 +54,10 @@ export default function Landing() {
         <div className="mx-auto flex h-20 max-w-[1200px] items-center justify-between px-5">
           <Logo light />
           <nav className="hidden items-center gap-7 text-sm font-medium text-white/80 md:flex" aria-label="Main">
-            <a href="#how" className="hover:text-white">How it works</a>
-            <a href="#products" className="hover:text-white">What we deliver</a>
-            <a href="#areas" className="hover:text-white">Areas</a>
-            <a href="#prototype" className="hover:text-white">Inside the app</a>
+            <button onClick={() => jump("how")} className="hover:text-white">How it works</button>
+            <button onClick={() => jump("products")} className="hover:text-white">What we deliver</button>
+            <button onClick={() => jump("areas")} className="hover:text-white">Areas</button>
+            <button onClick={() => jump("prototype")} className="hover:text-white">Inside the app</button>
           </nav>
           <HeaderAccount />
         </div>
@@ -71,9 +79,9 @@ export default function Landing() {
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button size="lg" variant="accent" onClick={() => open("customer")}>Plan my milk</Button>
-              <a href="#prototype" className="inline-flex h-12 items-center gap-2 rounded-xl px-5 text-[15px] font-semibold text-white ring-1 ring-white/25 hover:bg-white/10">
+              <button onClick={() => jump("prototype")} className="inline-flex h-12 items-center gap-2 rounded-xl px-5 text-[15px] font-semibold text-white ring-1 ring-white/25 hover:bg-white/10">
                 Tour the three apps
-              </a>
+              </button>
             </div>
             <dl className="mt-12 grid max-w-md grid-cols-3 gap-6 border-t border-white/10 pt-6">
               {[[String(seedCustomers.length), "homes on five routes"], ["98.4%", "drops before 6:15 AM"], ["0", "preservatives, ever"]].map(([v, l]) => (

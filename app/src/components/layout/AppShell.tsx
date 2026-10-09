@@ -24,8 +24,8 @@ const nav: Record<Role, NavItem[]> = {
     { to: "/customer/help", label: "Help", icon: <LifeBuoy size={18} /> },
   ],
   rider: [
-    { to: "/rider", label: "Today's round", short: "Round", icon: <RouteIcon size={18} />, end: true },
-    { to: "/rider/summary", label: "Shift summary", short: "Summary", icon: <BarChart3 size={18} /> },
+    { to: "/rider", label: "Today's homes", short: "Today", icon: <RouteIcon size={18} />, end: true },
+    { to: "/rider/summary", label: "My earnings", short: "Earnings", icon: <BarChart3 size={18} /> },
   ],
   admin: [
     { to: "/admin", label: "Overview", icon: <LayoutDashboard size={18} />, end: true },
@@ -216,9 +216,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const current = items.find((i) => (i.end ? loc.pathname === i.to : loc.pathname.startsWith(i.to))) ?? items[0]!;
 
   return (
-    <div className="min-h-screen bg-milk lg:pl-[272px]">
+    <div className="min-h-screen bg-milk lg:pl-[272px] print:pl-0">
       {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[272px] flex-col bg-ink px-4 py-5 text-white lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[272px] print:!hidden flex-col bg-ink px-4 py-5 text-white lg:flex">
         <Link to="/" className="mb-6 flex items-center gap-2.5 px-2" aria-label="Cowland Daily home">
           <Logo light />
         </Link>
@@ -256,7 +256,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Top bar */}
-      <header className="sticky top-0 z-30 border-b border-milk-2 bg-milk/90 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b print:hidden border-milk-2 bg-milk/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1240px] items-center gap-3 px-4 sm:px-6">
           <Link to="/" className="lg:hidden" aria-label="Cowland Daily home"><Logo compact /></Link>
           <div className="min-w-0 flex-1">
@@ -272,7 +272,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main className="mx-auto max-w-[1240px] px-4 pb-28 pt-5 sm:px-6 lg:pb-12 lg:pt-7">{children}</main>
 
       {/* Mobile tab bar */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-milk-2 bg-white/95 backdrop-blur lg:hidden" aria-label="Sections">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t print:hidden border-milk-2 bg-white/95 backdrop-blur lg:hidden" aria-label="Sections">
         <div className="mx-auto flex max-w-lg justify-around px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2">
           {items.map((i) => (
             <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => clsx("flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-1 py-1 text-[11px] font-semibold", isActive ? "text-ink" : "text-ink-soft")}>

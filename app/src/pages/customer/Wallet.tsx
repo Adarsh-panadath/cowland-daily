@@ -14,7 +14,8 @@ export default function WalletPage() {
   const txns = useStore((s) => s.txns.filter((t) => t.customerId === ME));
   const [filter, setFilter] = useState<"all" | "debit" | "topup" | "refund">("all");
   const [open, setOpen] = useState(false);
-  const [auto, setAuto] = useState(true);
+  const auto = useStore((s) => s.autoTopUp);
+  const setAuto = useStore((s) => s.setAutoTopUp);
   const daily = lineTotal(me.plan);
 
   const chart = useMemo(() => {

@@ -8,7 +8,7 @@ import { clock, inr, timeAgo } from "../../lib/format";
 import { Badge, Button, Card, Empty, Field, Modal, Segmented, inputCls } from "../../components/ui";
 import { toast } from "../../store/toast";
 
-const tone: Record<ExceptionKind, "bad" | "warn" | "neutral"> = { missing: "bad", leak: "bad", seal: "warn", late: "warn", access: "neutral", quality: "bad" };
+const tone: Record<ExceptionKind, "bad" | "warn" | "neutral"> = { missing: "bad", leak: "bad", seal: "warn", late: "warn", access: "neutral", quality: "bad", callback: "neutral" };
 const srcIcon = { customer: <User size={14} />, rider: <Truck size={14} />, system: <Cpu size={14} /> };
 const srcLabel = { customer: "Customer", rider: "Rider", system: "Automatic" };
 

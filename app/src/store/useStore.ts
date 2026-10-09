@@ -20,7 +20,10 @@ export const kindLabel: Record<ExceptionKind, string> = {
   seal: "Seal check",
   access: "Couldn't reach door",
   quality: "Quality concern",
+  callback: "Callback request",
 };
+
+export type RiderLang = "en" | "mr" | "hi";
 
 interface State {
   role: Role;
@@ -34,6 +37,11 @@ interface State {
   cart: LineItem[];
   simOn: boolean;
   seedDay: string;
+  autoTopUp: boolean;
+  offers: Record<string, string>;
+  remindedAt: string | null;
+  planned: Record<string, boolean>;
+  riderLang: RiderLang;
 
   setRole: (r: Role) => void;
   signIn: (r: Role) => void;
@@ -64,6 +72,11 @@ interface State {
   setSim: (on: boolean) => void;
   tick: () => void;
 
+  setAutoTopUp: (on: boolean) => void;
+  sendOffer: (customerId: string) => void;
+  remindLowBalances: (ids: string[]) => void;
+  togglePlanned: (id: string) => void;
+  setRiderLang: (l: RiderLang) => void;
   markRead: (role: Role) => void;
   reset: () => void;
 }
@@ -83,6 +96,11 @@ const fresh = () => ({
   cart: [] as LineItem[],
   simOn: false,
   seedDay: dayKey(new Date()),
+  autoTopUp: true,
+  offers: {} as Record<string, string>,
+  remindedAt: null as string | null,
+  planned: {} as Record<string, boolean>,
+  riderLang: "en" as RiderLang,
 });
 
 /** Keep the demo on a coherent dawn timeline: each new drop lands 2–3 minutes after the route's last one. */
@@ -276,13 +294,31 @@ export const useStore = create<State>()(
         else get().deliver(next.id);
       },
 
+      setAutoTopUp: (autoTopUp) => set({ autoTopUp }),
+      sendOffer: (id) =>
+        set((s) => ({
+          offers: { ...s.offers, [id]: new Date().toISOString() },
+          notices: id === ME ? [notice("customer", "A gift from Cowland: your next top-up of ₹1,000 or more comes with a free bottle of A2 milk.", "good"), ...s.notices] : s.notices,
+        })),
+      remindLowBalances: (ids) =>
+        set((s) => ({
+          remindedAt: new Date().toISOString(),
+          notices: [
+            ...(ids.includes(ME) ? [notice("customer", "Your wallet is running low. Add money before 10 PM so tomorrow's milk isn't held.", "warn")] : []),
+            notice("admin", `Top-up reminder sent to ${ids.length} households.`, "info"),
+            ...s.notices,
+          ],
+        })),
+      togglePlanned: (id) => set((s) => ({ planned: { ...s.planned, [id]: !s.planned[id] } })),
+      setRiderLang: (riderLang) => set({ riderLang }),
+
       markRead: (role) => set((s) => ({ notices: s.notices.map((n) => (n.role === role ? { ...n, read: true } : n)) })),
 
-      reset: () => set({ ...fresh(), role: get().role, session: get().session }),
+      reset: () => set({ ...fresh(), role: get().role, session: get().session, riderLang: get().riderLang }),
     }),
     {
       name: "cowland-daily-demo",
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => {
         const { simOn: _simOn, ...rest } = s;

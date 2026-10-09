@@ -202,7 +202,7 @@ function CustomerForm({ onDone, fill }: { onDone: () => void; fill: number }) {
       </label>
       {err && <ErrorText>{err}</ErrorText>}
       <Button size="lg" type="submit" className="mt-6 w-full" disabled={busy}>{busy ? <Spinner /> : "Send code"}</Button>
-      <p className="mt-4 text-center text-sm text-ink-soft">New to Cowland? <Link to="/#areas" className="font-semibold text-ink hover:underline">Check if we deliver to you</Link></p>
+      <p className="mt-4 text-center text-sm text-ink-soft">New to Cowland? <Link to="/" state={{ scrollTo: "areas" }} className="font-semibold text-ink hover:underline">Check if we deliver to you</Link></p>
     </form>
   );
 }

@@ -80,7 +80,7 @@ export interface Stop {
   confirmed?: boolean;
 }
 
-export type ExceptionKind = "missing" | "leak" | "late" | "seal" | "access" | "quality";
+export type ExceptionKind = "missing" | "leak" | "late" | "seal" | "access" | "quality" | "callback";
 
 export interface Exception {
   id: string;
