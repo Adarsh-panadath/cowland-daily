@@ -5,7 +5,7 @@ import Login from "./pages/Login";
 import type { Role } from "./data/types";
 import Landing from "./pages/Landing";
 import Join from "./pages/Join";
-import DataPage from "./pages/DataPage";
+import DataPage, { DatabaseView } from "./pages/DataPage";
 import CustomerHome from "./pages/customer/Home";
 import Shop from "./pages/customer/Shop";
 import WalletPage from "./pages/customer/Wallet";
@@ -47,6 +47,7 @@ export default function App() {
       <Route path="/admin/customers" element={shell("admin", <Customers />)} />
       <Route path="/admin/analytics" element={shell("admin", <Analytics />)} />
       <Route path="/admin/demand" element={shell("admin", <Demand />)} />
+      <Route path="/admin/data" element={shell("admin", <DatabaseView embedded />)} />
       <Route path="/admin/quality" element={shell("admin", <Quality />)} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

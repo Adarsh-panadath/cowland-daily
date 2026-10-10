@@ -23,7 +23,7 @@ const LIMIT = 150;
  * A live view of everything the prototype has saved in this browser. Open it next to the apps:
  * it updates the moment a click in any tab changes the data.
  */
-export default function DataPage() {
+export function DatabaseView({ embedded = false }: { embedded?: boolean }) {
   const today = useToday();
   const s = useStore();
   const [tab, setTab] = useState<Tab>("activity");
@@ -52,24 +52,12 @@ export default function DataPage() {
   const counts: Record<Tab, number> = { activity: s.events.length, orders: s.stops.length, ledger: s.txns.length, households: s.customers.length, tickets: s.exceptions.length, waitlist: s.waitlist.length };
   const label: Record<Tab, string> = { activity: "Activity", orders: "Orders", ledger: "Ledger", households: "Households", tickets: "Tickets", waitlist: "Waitlist" };
 
-  return (
-    <div className="min-h-screen bg-milk">
-      <header className="border-b border-milk-2 bg-white">
-        <div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <Link to="/" aria-label="Cowland Daily home"><Logo /></Link>
-          <nav className="flex flex-wrap gap-1.5 text-sm font-semibold" aria-label="Open an app in a new tab">
-            {([["Customer", "/customer"], ["Rider", "/rider"], ["Hub", "/admin"]] as const).map(([l, to]) => (
-              <a key={l} href={`#${to}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-ink-3 hover:bg-milk-2 hover:text-ink">{l} app <ExternalLink size={13} /></a>
-            ))}
-          </nav>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-[1240px] space-y-5 px-4 py-6 sm:px-6">
+  const BODY = (
+    <>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="flex items-center gap-2 font-display text-3xl font-bold tracking-tight"><Database size={26} /> Demo database</h1>
-            <p className="mt-1 max-w-2xl text-ink-soft">Everything the prototype has saved in this browser. Keep this open in one tab and click around the apps in others: it updates the moment anything changes.</p>
+            <h1 className="flex items-center gap-2 font-display text-3xl font-bold tracking-tight"><Database size={26} /> {embedded ? "Database" : "Demo database"}</h1>
+            <p className="mt-1 max-w-2xl text-ink-soft">{embedded ? "Every record in the prototype, live. Deliveries, top-ups and reports from the customer and rider apps appear here the moment they happen, even from other tabs." : "Everything the prototype has saved in this browser. Keep this open in one tab and click around the apps in others: it updates the moment anything changes."}</p>
             <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-3">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-neem-soft px-2.5 py-0.5 font-semibold text-neem-deep"><span className="h-2 w-2 animate-pulse rounded-full bg-neem" /> Live</span>
               Delivery morning <b className="text-ink">{dayMonth(today)}</b> · last change {s.events[0] ? clock(s.events[0].at) : "—"}
@@ -253,11 +241,31 @@ export default function DataPage() {
           footer={<><Button variant="ghost" onClick={() => setResetOpen(false)}>Keep my data</Button><Button variant="danger" onClick={() => { useStore.getState().reset(); setResetOpen(false); toast("Demo data reset. Back to the first demo morning.", "info"); }}>Reset everything</Button></>}>
           <p className="text-sm text-ink-soft">This clears every delivery, order change, ticket, new household and waitlist entry made in this browser, and goes back to the first demo morning. Open tabs update straight away. Anyone signed in as a new household will need to sign in again.</p>
         </Modal>
-        <Toaster />
+        {!embedded && <Toaster />}
 
         <p className="pb-6 text-xs text-ink-soft">This is a browser-only demo database (saved in this browser's local storage). Tabs in this browser share it; other browsers and devices have their own copy. Reset it with the button above or from the account menu in any app.</p>
-      </main>
+    </>
+  );
+
+  return (
+    embedded ? (
+      <div className="space-y-5">{BODY}</div>
+    ) : (
+    <div className="min-h-screen bg-milk">
+      <header className="border-b border-milk-2 bg-white">
+        <div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <Link to="/" aria-label="Cowland Daily home"><Logo /></Link>
+          <nav className="flex flex-wrap gap-1.5 text-sm font-semibold" aria-label="Open an app in a new tab">
+            {([["Customer", "/customer"], ["Rider", "/rider"], ["Hub", "/admin"]] as const).map(([l, to]) => (
+              <a key={l} href={`#${to}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-ink-3 hover:bg-milk-2 hover:text-ink">{l} app <ExternalLink size={13} /></a>
+            ))}
+          </nav>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-[1240px] space-y-5 px-4 py-6 sm:px-6">{BODY}</main>
     </div>
+    )
   );
 }
 
@@ -309,4 +317,8 @@ function More({ shown, total, onMore }: { shown: number; total: number; onMore: 
       <button onClick={onMore} className="font-semibold text-ink underline">Show more</button>
     </div>
   );
+}
+
+export default function DataPage() {
+  return <DatabaseView />;
 }

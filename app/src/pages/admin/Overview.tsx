@@ -5,6 +5,7 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContaine
 import { Droplets, DoorOpen, TriangleAlert, IndianRupee, Sparkles, TrendingUp, MapPinned, WalletMinimal, CloudRain } from "lucide-react";
 import { useStore, useToday, lineTotal } from "../../store/useStore";
 import { vanSalesValue } from "../../store/rules";
+import { LiveActivity } from "../../components/LiveActivity";
 import { toast } from "../../store/toast";
 import { productById, products } from "../../data/seed";
 import { dailyTotals } from "../../data/analytics";
@@ -107,6 +108,8 @@ export default function AdminOverview() {
           </Card>
         ))}
       </div>
+
+      <LiveActivity />
 
       <Card>
         <CardHead title="Extra sales from today's vans" sub="Money the same vans earn on the same run: spares sold at the door, and held orders won back by a top-up." right={<Badge tone="good">No discounts</Badge>} />

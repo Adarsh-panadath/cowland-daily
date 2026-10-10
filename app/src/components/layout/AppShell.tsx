@@ -27,12 +27,13 @@ const nav: Record<Role, NavItem[]> = {
     { to: "/rider/summary", label: "My earnings", short: "Earnings", icon: <BarChart3 size={18} /> },
   ],
   admin: [
-    { to: "/admin", label: "Overview", icon: <LayoutDashboard size={18} />, end: true },
-    { to: "/admin/analytics", label: "Analytics", icon: <ChartNoAxesCombined size={18} /> },
+    { to: "/admin", label: "Overview", short: "Home", icon: <LayoutDashboard size={18} />, end: true },
+    { to: "/admin/analytics", label: "Analytics", short: "Stats", icon: <ChartNoAxesCombined size={18} /> },
     { to: "/admin/routes", label: "Live routes", short: "Routes", icon: <Truck size={18} /> },
     { to: "/admin/tickets", label: "Tickets", icon: <TriangleAlert size={18} /> },
-    { to: "/admin/customers", label: "Customers", icon: <Users size={18} /> },
+    { to: "/admin/customers", label: "Customers", short: "People", icon: <Users size={18} /> },
     { to: "/admin/demand", label: "Demand", icon: <MapPinned size={18} /> },
+    { to: "/admin/data", label: "Database", short: "Data", icon: <Database size={18} /> },
     { to: "/admin/quality", label: "Milk quality", short: "Quality", icon: <FlaskConical size={18} /> },
   ],
 };
@@ -290,13 +291,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Mobile tab bar */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t print:hidden border-milk-2 bg-white/95 backdrop-blur lg:hidden" aria-label="Sections">
-        <div className="mx-auto flex max-w-lg justify-around px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2">
+        <div className="mx-auto flex max-w-lg justify-around px-1 pb-[max(env(safe-area-inset-bottom),8px)] pt-2">
           {items.map((i) => (
-            <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => clsx("flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-1 py-1 text-[11px] font-semibold", isActive ? "text-ink" : "text-ink-soft")}>
+            <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => clsx("flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl py-1 font-semibold", items.length > 5 ? "px-0 text-[10px]" : "px-1 text-[11px]", isActive ? "text-ink" : "text-ink-soft")}>
               {({ isActive }) => (
                 <>
-                  <span className={clsx("grid h-7 w-11 place-items-center rounded-full", isActive && "bg-marigold-soft")}>{i.icon}</span>
-                  {i.short ?? i.label}
+                  <span className={clsx("grid h-7 place-items-center rounded-full", items.length > 5 ? "w-9" : "w-11", isActive && "bg-marigold-soft")}>{i.icon}</span>
+                  <span className="w-full truncate text-center">{i.short ?? i.label}</span>
                 </>
               )}
             </NavLink>

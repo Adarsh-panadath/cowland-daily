@@ -23,7 +23,7 @@ New households sign up at `/#/join` (or **Get started** / **Start delivery here*
 
 ## Demo database
 
-Open `/#/data` (also linked from every sign-in page, the sidebar and the account menu) in its own tab. It shows everything the prototype has saved, live:
+Hub staff have it built in: **Database** in the hub sidebar, and a **Live activity** feed on the Overview showing the latest clicks from every app. It's also available without signing in at `/#/data` (linked from every sign-in page, the sidebar and the account menu), handy in its own tab. It shows everything the prototype has saved, live:
 
 - **Activity**: every click as a plain-English line (who, what, which order, wallet effect), including clicks the rules refused, such as a change after the 10 PM lock.
 - **Orders** for the current delivery morning, with each order's activity, ledger entries and tickets.
