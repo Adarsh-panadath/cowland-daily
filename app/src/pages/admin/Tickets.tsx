@@ -1,11 +1,11 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { Inbox, User, Truck, Cpu } from "lucide-react";
-import { useStore, kindLabel, lineTotal } from "../../store/useStore";
-import { GOODWILL_CAP, refundCap, refundableOn } from "../../store/rules";
+import { useStore, kindLabel, orderById } from "../../store/useStore";
+import { GOODWILL_CAP, orderValue, refundCap, refundableOn, replaceable, retryable } from "../../store/rules";
 import { ME, productById, routeById } from "../../data/seed";
 import type { Exception, ExceptionKind } from "../../data/types";
-import { clock, inr, timeAgo, weekday } from "../../lib/format";
+import { clock, dayMonth, inr, timeAgo, weekday } from "../../lib/format";
 import { Badge, Button, Card, Empty, Field, Modal, Segmented, inputCls } from "../../components/ui";
 import { toast } from "../../store/toast";
 
@@ -69,35 +69,44 @@ export default function Tickets() {
 function TicketModal({ ex, onClose }: { ex: Exception | null; onClose: () => void }) {
   const resolve = useStore((s) => s.resolve);
   const retry = useStore((s) => s.scheduleRetry);
+  const replace = useStore((s) => s.scheduleReplacement);
   const customers = useStore((s) => s.customers);
   const txns = useStore((s) => s.txns);
-  const stop = useStore((s) => (ex?.orderId ? s.stops.find((x) => x.orderId === ex.orderId) : undefined));
-  const [action, setAction] = useState<"refund" | "retry" | "explain" | null>(null);
+  const exceptions = useStore((s) => s.exceptions);
+  // the original order, even if it was on an earlier morning
+  const stop = useStore((s) => (ex?.orderId ? orderById(s, ex.orderId) : undefined));
+  const [action, setAction] = useState<"refund" | "retry" | "replace" | "explain" | null>(null);
   const [amount, setAmount] = useState<number | null>(null);
   const [note, setNote] = useState("");
+  const today = useStore((s) => s.stopsDate);
   if (!ex) return null;
   const c = customers.find((x) => x.id === ex.customerId)!;
-  // Refunds are bounded by what the ledger says is still charged on this order.
-  const cap = refundCap(ex, stop, txns);
+  // Refunds: bounded by what's still charged, and only for delivered, paid-for items not already refunded or replaced.
+  const cap = refundCap(ex, stop, txns, exceptions);
   const orderCharged = ex.orderId ? refundableOn(ex.orderId, txns) : 0;
-  // Only the affected items the customer actually paid for can be refunded; undelivered ones were never charged.
-  const paidFor = (ex.items ?? []).map((i) => ({ productId: i.productId, qty: stop?.delivered ? Math.min(i.qty, stop.delivered.find((d) => d.productId === i.productId)?.qty ?? 0) : i.qty }));
-  const itemsValue = ex.items ? lineTotal(paidFor) : ex.kind === "late" ? 20 : 0;
-  const unpaid = (ex.items ?? []).filter((i, k) => paidFor[k]!.qty < i.qty);
+  const toRetry = retryable(ex, stop, exceptions); // never delivered, never charged
+  const toReplace = replaceable(ex, stop, exceptions); // delivered, paid for, defective
+  const itemsValue = ex.items ? orderValue(stop, ex.items) : ex.kind === "late" ? 20 : 0;
   const suggested = Math.min(cap, itemsValue);
-  const canRetry = !!ex.items?.length;
-  const act = action ?? (suggested > 0 ? "refund" : canRetry ? "retry" : "explain");
+  const act = action ?? (toRetry.length ? "retry" : suggested > 0 ? "refund" : toReplace.length ? "replace" : "explain");
   const amt = amount ?? suggested;
   const over = amt > cap || amt < 0;
+  const list = (l: { productId: string; qty: number }[]) => l.map((i) => `${i.qty} × ${productById[i.productId]!.name}`).join(", ");
+  const options: { v: "refund" | "retry" | "replace" | "explain"; label: string; sub: string; off?: boolean }[] = [
+    ...(toRetry.length ? [{ v: "retry" as const, label: "Deliver the missing items on the next run", sub: `${list(toRetry)} never arrived and wasn't charged. Charged only when delivered.` }] : []),
+    { v: "refund", label: "Refund to wallet", sub: cap > 0 ? `Up to ${inr(cap)}: delivered, paid-for items not yet compensated.` : orderCharged > 0 ? "Nothing on this ticket was paid for, or it's already been compensated." : "Nothing is charged on this order.", off: cap === 0 },
+    ...(toReplace.length ? [{ v: "replace" as const, label: "Replace free on the next run", sub: `${list(toReplace)} was delivered and paid for. The replacement comes free, separate from the regular order.` }] : []),
+    { v: "explain", label: "No compensation, reply with an explanation", sub: "Closes the ticket without moving money." },
+  ];
   const close = () => { setAmount(null); setNote(""); setAction(null); onClose(); };
   const done = ex.status === "resolved";
 
   return (
     <Modal open onClose={close} title={kindLabel[ex.kind]} wide
       footer={done ? <Button onClick={close}>Close</Button> : <><Button variant="ghost" onClick={close}>Cancel</Button><Button disabled={act === "refund" && (over || amt === 0)} onClick={() => {
-        if (act === "retry") {
-          const d = retry(ex.id);
-          toast(d ? `Added to ${c.name}'s ${weekday(d, "long")} delivery. Charged only when it arrives.` : "Couldn't schedule a retry.", d ? "good" : "warn");
+        if (act === "retry" || act === "replace") {
+          const d = act === "retry" ? retry(ex.id) : replace(ex.id);
+          toast(d ? (act === "retry" ? `Added to ${c.name}'s ${weekday(d, "long")} delivery. Charged only when it arrives.` : `Free replacement added to ${c.name}'s ${weekday(d, "long")} delivery.`) : "Nothing left to send on this ticket.", d ? "good" : "warn");
           return close();
         }
         const text = act === "refund" ? `Refunded ${inr(amt)} to wallet` : note || "Explained to the customer";
@@ -118,9 +127,10 @@ function TicketModal({ ex, onClose }: { ex: Exception | null; onClose: () => voi
             <div className="rounded-2xl bg-milk p-4 text-sm">
               <p className="text-ink-soft">Order <b className="tabular text-ink">{ex.orderId}</b>{stop ? `, Route ${routeById[stop.routeId]!.code}` : ""}</p>
               {stop && <ul className="mt-1">{stop.items.map((i) => {
-                const got = stop.delivered?.find((d) => d.productId === i.productId)?.qty;
+                const got = stop.delivered ? stop.delivered.find((d) => d.productId === i.productId)?.qty ?? 0 : undefined;
                 return <li key={i.productId}>{i.qty} × {productById[i.productId]!.name}{got !== undefined && got < i.qty ? <span className="text-brick"> ({got} delivered)</span> : null}</li>;
               })}</ul>}
+              {stop && stop.date !== today && <p className="mt-1 text-xs font-semibold text-marigold-deep">From the {dayMonth(stop.date)} delivery</p>}
               {stop && <p className="mt-2">{stop.status === "delivered" ? `Delivered at ${clock(stop.at!)}` : stop.status === "issue" ? `Rider flagged: ${stop.issueNote}` : stop.status === "held" ? "Held: wallet too low" : "Not delivered yet"}</p>}
               <p className="mt-2">Charged on this order now <b className="tabular">{inr(orderCharged)}</b></p>
             </div>
@@ -130,7 +140,7 @@ function TicketModal({ ex, onClose }: { ex: Exception | null; onClose: () => voi
           {ex.items && (
             <div className="rounded-2xl border border-milk-3 p-4 text-sm">
               <p className="font-semibold">Affected items</p>
-              <ul className="mt-1">{ex.items.map((i) => <li key={i.productId}>{i.qty} × {productById[i.productId]!.name}, {inr(productById[i.productId]!.price * i.qty)}</li>)}</ul>
+              <ul className="mt-1">{ex.items.map((i) => <li key={i.productId}>{i.qty} × {productById[i.productId]!.name}, {inr(orderValue(stop, [i]))}</li>)}</ul>
             </div>
           )}
         </div>
@@ -143,13 +153,12 @@ function TicketModal({ ex, onClose }: { ex: Exception | null; onClose: () => voi
             <div className="mt-5 space-y-3">
               <fieldset className="space-y-2">
                 <legend className="mb-1 text-sm font-semibold">What should we do?</legend>
-                {([["refund", "Refund to wallet"], ["retry", "Deliver the missing items on the next run"], ["explain", "No refund, reply with an explanation"]] as const).filter(([v]) => v !== "retry" || canRetry).map(([v, l]) => (
-                  <label key={v} className={clsx("flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm", act === v ? "border-ink bg-milk" : "border-milk-3", v === "refund" && cap === 0 && "opacity-50")}>
-                    <input type="radio" name="act" checked={act === v} disabled={v === "refund" && cap === 0} onChange={() => setAction(v)} className="accent-[#14213D]" /> {l}{v === "refund" && cap === 0 ? (orderCharged > 0 ? " (these items weren't charged)" : " (nothing charged on this order)") : ""}
+                {options.map((o) => (
+                  <label key={o.v} className={clsx("flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm", act === o.v ? "border-ink bg-milk" : "border-milk-3", o.off && "cursor-not-allowed opacity-50")}>
+                    <input type="radio" name="act" checked={act === o.v} disabled={o.off} onChange={() => setAction(o.v)} className="mt-0.5 accent-[#14213D]" />
+                    <span><span className="block font-semibold">{o.label}</span><span className="block text-xs text-ink-soft">{o.sub}</span></span>
                   </label>
                 ))}
-                {unpaid.length > 0 && <p className="rounded-xl bg-milk px-3 py-2 text-xs text-ink-3">{unpaid.map((i) => productById[i.productId]!.name).join(", ")} wasn't delivered, so it wasn't charged. Refunding it would pay the customer for something they never paid for.</p>}
-                {act === "retry" && <p className="rounded-xl bg-neem-soft px-3 py-2 text-xs text-neem-deep">Adds the items to the customer's next order that isn't locked. They're charged only if delivered, so nothing is paid twice.</p>}
               </fieldset>
               {act === "refund" && (
                 <Field label="Refund amount" hint={`Up to ${inr(cap)}${suggested ? `. Suggested ${inr(suggested)}, the value of the affected items` : ""}.`}>

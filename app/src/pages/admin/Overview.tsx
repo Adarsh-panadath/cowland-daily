@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import clsx from "clsx";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Droplets, DoorOpen, TriangleAlert, IndianRupee, Sparkles, TrendingUp, MapPinned, WalletMinimal, CloudRain } from "lucide-react";
-import { useStore, useToday, lineTotal } from "../../store/useStore";
-import { vanSalesValue } from "../../store/rules";
+import { useStore, useToday } from "../../store/useStore";
+import { vanSalesValue, orderTotal } from "../../store/rules";
 import { LiveActivity } from "../../components/LiveActivity";
 import { toast } from "../../store/toast";
 import { productById, products } from "../../data/seed";
@@ -68,9 +68,9 @@ export default function AdminOverview() {
 
   const van = vanSalesValue(allStops);
   const heldStops = allStops.filter((x) => x.status === "held");
-  const heldValue = heldStops.reduce((a, x) => a + lineTotal(x.items), 0);
+  const heldValue = heldStops.reduce((a, x) => a + orderTotal(x), 0);
   const released = allStops.filter((x) => x.releasedAt);
-  const releasedValue = released.reduce((a, x) => a + lineTotal(x.items), 0);
+  const releasedValue = released.reduce((a, x) => a + orderTotal(x), 0);
   const remind = useStore((s) => s.remindLowBalances);
   const remindedAt = useStore((s) => s.remindedAt);
 

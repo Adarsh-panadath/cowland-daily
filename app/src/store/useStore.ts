@@ -1,11 +1,11 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { ActivityEvent, Customer, DayOverride, DayStatus, Exception, ExceptionKind, LineItem, Notice, Role, Share, Stop, Txn, WaitEntry } from "../data/types";
+import type { ActivityEvent, Customer, DayOverride, DayStatus, Exception, ExceptionKind, LineItem, Notice, OrderLink, Role, Share, Stop, Txn, WaitEntry } from "../data/types";
 import { describe, makeEvent, simSpares, type Snap } from "./activity";
 import { ME, productById, routeById, seedCustomers, seedExceptions, seedNotices, seedStops, seedTxns, seedWaitlist } from "../data/seed";
 import { accounts, type DemoAccount } from "../lib/auth";
 import { addDays, dayKey, demoAt, demoNow, firstEditableDate, fromKey, isLockedDate, setDemoOffset, todayKey, uid } from "../lib/format";
-import { generateStops, itemsOn, lineTotal, mergeItems, planOn, refundCap, shortLines, sparesLeft } from "./rules";
+import { chargeFor, generateStops, lineTotal, mergeItems, netCharged, planOn, pricesFor, refundCap, replaceable, retryable, shortLines, sparesLeft } from "./rules";
 
 export { lineTotal, mergeItems } from "./rules";
 
@@ -63,6 +63,7 @@ interface State {
   overrides: Record<string, Record<string, DayOverride>>; // customerId -> date -> changes
   waitlist: WaitEntry[];
   shares: Share[];
+  pastOrders: Stop[]; // earlier delivery mornings, newest first, kept so tickets and receipts resolve against the original order
   events: ActivityEvent[]; // activity log, newest first
   opening: Record<string, number>; // each wallet when the demo started or the household signed up
   nextSeq: Record<string, number>; // customerId -> stop number, waiting for the next morning's run
@@ -106,6 +107,7 @@ interface State {
   // admin
   resolve: (exId: string, refund: number, resolution: string) => number;
   scheduleRetry: (exId: string) => string | null;
+  scheduleReplacement: (exId: string) => string | null;
   broadcast: (text: string) => void;
   toggleCustomer: (customerId: string) => void;
   applyRouteOrder: (routeId: string, customerIds: string[]) => "now" | "tomorrow";
@@ -169,6 +171,7 @@ const fresh = () => {
     } as Record<string, Record<string, DayOverride>>,
     waitlist: structuredClone(seedWaitlist),
     shares: [] as Share[],
+    pastOrders: [] as Stop[],
     events: [makeEvent({ actor: "system", who: "Demo", action: "Demo started", detail: "Sample data loaded for this morning. Every click from here is logged." })] as ActivityEvent[],
     opening: Object.fromEntries(seedCustomers.map((c) => [c.id, c.wallet])) as Record<string, number>,
     nextSeq: {} as Record<string, number>,
@@ -192,8 +195,52 @@ function nextAt(stops: Stop[], routeId: string) {
 
 const notice = (role: Role, text: string, tone: Notice["tone"] = "info"): Notice => ({ id: uid("n"), role, text, at: new Date().toISOString(), read: false, tone });
 const MAX_TXNS = 5000;
+const MAX_PAST = 2500;
+/** Keep earlier mornings' orders (newest first) so tickets, receipts and refunds resolve against them. */
+const archive = (today: Stop[], past: Stop[]) => [...today, ...past.filter((p) => !today.some((t) => t.orderId === p.orderId))].slice(0, MAX_PAST);
 /** New money movements are marked live, so wallets can be checked against the ledger. */
 const ledger = (txns: Txn[], add: Txn[]) => [...add.map((t) => ({ ...t, live: true })), ...txns].slice(0, MAX_TXNS);
+
+/**
+ * Add a one-off to a household's next open delivery date (never their recurring plan), linked to
+ * the ticket and its order. Retries are paid on delivery; replacements are free.
+ */
+function scheduleOneOff(exId: string, kind: "retry" | "replacement"): string | null {
+  const s = useStore.getState();
+  const ex = s.exceptions.find((e) => e.id === exId);
+  if (!ex || ex.status === "resolved" || !ex.orderId) return null;
+  const order = orderById(s, ex.orderId);
+  const lines = kind === "retry" ? retryable(ex, order, s.exceptions) : replaceable(ex, order, s.exceptions);
+  if (!lines.length) return null;
+  const c = s.customers.find((x) => x.id === ex.customerId)!;
+  const mine = s.overrides[c.id] ?? {};
+  let date = firstEditableDate();
+  for (let i = 0; i < 21; i++) {
+    const st = mine[date]?.status;
+    if (st !== "skipped" && st !== "vacation" && !(c.startDate && date < c.startDate)) break;
+    date = dayKey(addDays(fromKey(date), 1));
+  }
+  const cur = mine[date] ?? {};
+  const field = kind === "retry" ? "add" : "free";
+  const bucket = { ...(cur[field] ?? {}) };
+  for (const l of lines) bucket[l.productId] = (bucket[l.productId] ?? 0) + l.qty;
+  const links: OrderLink[] = [...(cur.links ?? []), ...lines.map((l) => ({ ticketId: ex.id, fromOrder: ex.orderId!, kind, productId: l.productId, qty: l.qty }))];
+  const what = lines.map((i) => `${i.qty} × ${productById[i.productId]!.name}`).join(", ");
+  const when = fromKey(date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+  const text = kind === "retry" ? `${what} added to the ${when} delivery, charged only when delivered` : `free replacement of ${what} with the ${when} delivery`;
+  useStore.setState({
+    overrides: { ...s.overrides, [c.id]: { ...mine, [date]: { ...cur, [field]: bucket, links } } },
+    exceptions: s.exceptions.map((e) => (e.id === exId ? { ...e, status: "resolved", refund: 0, resolution: `${kind === "retry" ? "Retry" : "Replacement"}: ${text}`, compensation: { kind, date, items: lines } } : e)),
+    notices: c.id === s.meId ? [notice("customer", kind === "retry" ? `We'll bring ${what} with your ${when} delivery. You pay only when it arrives.` : `We'll replace ${what} free with your ${when} delivery. You won't be charged for it.`, "good"), ...s.notices] : s.notices,
+  });
+  return date;
+}
+
+/** Whether a route's van has left the hub this morning (Route 04: crate loaded; others: first drop made). */
+export function routeDispatched(s: Pick<State, "stops" | "shift">, routeId: string) {
+  if (routeId === "r4") return !!s.shift.loadedAt;
+  return s.stops.some((x) => x.routeId === routeId && (x.status === "delivered" || x.status === "issue"));
+}
 
 /* ---------- one shared copy of the data across tabs ---------- */
 
@@ -301,21 +348,31 @@ export const useStore = create<State>()(
         return from;
       },
 
-      /** A top-up that covers a held order puts it straight back on this morning's van, at the end of the route. */
+      /**
+       * Add money. A held order whose van hasn't left yet goes back into this morning's run.
+       * Once the van has left (crate loaded or first drop made), the order stays off the van and
+       * uncharged, and the money covers the next delivery instead. A payment never puts milk on a van.
+       */
       topUp: (amount, method) =>
         set((s) => {
           const me = s.customers.find((c) => c.id === s.meId)!;
           const wallet = me.wallet + amount;
           const held = s.stops.find((x) => x.customerId === s.meId && x.status === "held");
-          const release = held && wallet >= lineTotal(held.items);
+          const covered = !!held && wallet >= chargeFor(held, held.items);
+          const left = !!held && routeDispatched(s, held.routeId);
+          const release = covered && !left;
           const lastSeq = Math.max(0, ...s.stops.filter((x) => held && x.routeId === held.routeId && x.status !== "held").map((x) => x.seq));
+          const tomorrow = fromKey(dayKey(addDays(fromKey(s.stopsDate), 1))).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" });
           return {
             customers: s.customers.map((c) => (c.id === s.meId ? { ...c, wallet } : c)),
-            stops: release ? s.stops.map((x) => (x.id === held.id ? { ...x, status: "pending", seq: lastSeq + 1, holdReason: undefined, releasedAt: new Date().toISOString() } : x)) : s.stops,
+            stops: !held || !covered ? s.stops : s.stops.map((x) => (x.id !== held.id ? x : release
+              ? { ...x, status: "pending", seq: lastSeq + 1, holdReason: undefined, releasedAt: new Date().toISOString() }
+              : { ...x, holdReason: `Topped up after the van left. Not charged for today; your next delivery is ${tomorrow}` })),
             txns: ledger(s.txns, [{ id: uid("t"), customerId: s.meId, at: demoNow().toISOString(), kind: "topup", amount, note: `Demo top-up via ${method}` }]),
             notices: [
-              ...(release ? [notice("admin", `${me.flat}, ${me.society} topped up. Held order ${held.orderId} is back on Route ${routeById[held.routeId]!.code}.`, "good"), notice("rider", `New stop added at the end: ${me.flat}, ${me.society}.`, "info")] : []),
-              notice("customer", release ? `₹${amount.toLocaleString("en-IN")} added. Your milk is back on this morning's van.` : `₹${amount.toLocaleString("en-IN")} added to your wallet (demo payment).`, "good"),
+              ...(release ? [notice("admin", `${me.flat}, ${me.society} topped up before the van left. Held order ${held!.orderId} is back on Route ${routeById[held!.routeId]!.code}.`, "good"), notice("rider", `New stop added at the end: ${me.flat}, ${me.society}.`, "info")] : []),
+              ...(covered && left ? [notice("admin", `${me.flat}, ${me.society} topped up after Route ${routeById[held!.routeId]!.code} left. Order ${held!.orderId} stays held, not charged; next delivery ${tomorrow}.`, "info")] : []),
+              notice("customer", release ? `₹${amount.toLocaleString("en-IN")} added. Your milk is back in this morning's run.` : covered && left ? `₹${amount.toLocaleString("en-IN")} added. This morning's van has already left, so today's milk won't come and you won't be charged for it. Your next delivery is ${tomorrow}.` : `₹${amount.toLocaleString("en-IN")} added to your wallet (demo payment).`, "good"),
               ...s.notices,
             ],
           };
@@ -402,7 +459,7 @@ export const useStore = create<State>()(
         if (me.wallet < lineTotal(items)) return "wallet";
         const p = productById[pid]!;
         set({
-          stops: s.stops.map((x) => (x.id === stop.id ? { ...x, items, fromVan: mergeItems(x.fromVan ?? [], [{ productId: pid, qty: 1 }]) } : x)),
+          stops: s.stops.map((x) => (x.id === stop.id ? { ...x, items, prices: { ...pricesFor([{ productId: pid, qty: 1 }]), ...x.prices }, fromVan: mergeItems(x.fromVan ?? [], [{ productId: pid, qty: 1 }]) } : x)),
           notices: [
             notice("rider", `Add 1 ${p.name} from the spares for ${me.flat}, ${me.society}.`, "info"),
             ...s.notices,
@@ -436,32 +493,42 @@ export const useStore = create<State>()(
       /* ---------------- rider ---------------- */
 
       /**
-       * Mark a stop delivered with what was actually handed over. Fewer than ordered: the rest is
-       * listed as short and not charged. More than ordered: the extra comes from the van's spares
-       * (only as many as are left, and only if the wallet covers it), at the normal price.
+       * Mark a stop with exactly what was handed over.
+       * - Fewer than ordered: the rest is recorded as short, not charged, and a ticket is opened.
+       * - More than ordered: the extra comes from the van's spares (only as many as are left and
+       *   only if the wallet covers it), charged at the order's price.
+       * - Nothing handed over: a failed attempt (problem), not a delivery.
        */
-      deliver: (stopId, bottles, deliveredItems) =>
+      deliver: (stopId, bottles, deliveredItems) => {
+        const s0 = get();
+        const found = s0.stops.find((x) => x.id === stopId);
+        if (!found || found.status !== "pending") return;
+        const asked = (deliveredItems ?? found.items).map((i) => ({ productId: i.productId, qty: Math.max(0, Math.floor(i.qty)) }));
+        if (!asked.some((i) => i.qty > 0)) {
+          get().flagStop(stopId, "missing", "Nothing could be handed over");
+          return;
+        }
         set((s) => {
-          const found = s.stops.find((x) => x.id === stopId);
-          if (!found || found.status === "delivered" || found.status === "held") return {};
           let stop = found;
-          const given = (deliveredItems ?? found.items).filter((i) => i.qty > 0).map((i) => ({ ...i }));
-          // extras beyond the order come out of the spares
           const left = sparesLeft(s.stops, found.routeId);
           const wallet = s.customers.find((c) => c.id === found.customerId)!.wallet;
           const extras: LineItem[] = [];
-          for (const g of given) {
+          const given: LineItem[] = [];
+          for (const g of asked) {
             const ordered = found.items.find((i) => i.productId === g.productId)?.qty ?? 0;
-            let extra = Math.max(0, g.qty - ordered);
-            extra = Math.min(extra, Math.max(0, left[g.productId] ?? 0));
-            while (extra > 0 && lineTotal(mergeItems(found.items, [...extras, { productId: g.productId, qty: extra }])) > wallet) extra--;
-            g.qty = ordered + extra;
+            if (g.qty <= ordered) {
+              if (g.qty > 0) given.push({ ...g }); // a smaller quantity is kept exactly as entered
+              continue;
+            }
+            let extra = Math.min(g.qty - ordered, Math.max(0, left[g.productId] ?? 0));
+            const priced = { ...found, prices: { ...pricesFor([g]), ...found.prices } };
+            while (extra > 0 && chargeFor({ ...priced, items: mergeItems(found.items, [...extras, { productId: g.productId, qty: extra }]) }, mergeItems(found.items, [...extras, { productId: g.productId, qty: extra }])) > wallet) extra--;
+            if (ordered + extra > 0) given.push({ productId: g.productId, qty: ordered + extra });
             if (extra) extras.push({ productId: g.productId, qty: extra });
           }
-          if (extras.length) stop = { ...found, items: mergeItems(found.items, extras), fromVan: mergeItems(found.fromVan ?? [], extras), atDoor: mergeItems(found.atDoor ?? [], extras) };
-          const delivered = given;
-          const amount = lineTotal(delivered);
-          const missing = shortLines(stop.items, delivered);
+          if (extras.length) stop = { ...found, items: mergeItems(found.items, extras), prices: { ...pricesFor(extras), ...found.prices }, fromVan: mergeItems(found.fromVan ?? [], extras), atDoor: mergeItems(found.atDoor ?? [], extras) };
+          const amount = chargeFor(stop, given);
+          const missing = shortLines(stop.items, given);
           const cust = s.customers.find((c) => c.id === stop.customerId)!;
           const isMe = stop.customerId === s.meId;
           const autoTicket: Exception[] = missing.length
@@ -469,18 +536,19 @@ export const useStore = create<State>()(
             : [];
           return {
             stops: s.stops.map((x) =>
-              x.id === stopId ? { ...stop, status: "delivered", at: nextAt(s.stops, stop.routeId), bottlesCollected: bottles ?? x.bottlesDue, issueNote: missing.length ? "Partly delivered" : undefined, delivered, charged: amount, confirmed: false, confirmedAt: undefined } : x,
+              x.id === stopId ? { ...stop, status: "delivered", at: nextAt(s.stops, stop.routeId), bottlesCollected: bottles ?? x.bottlesDue, issueNote: missing.length ? "Partly delivered" : undefined, delivered: given, charged: amount, confirmed: false, confirmedAt: undefined } : x,
             ),
             customers: s.customers.map((c) => (c.id === stop.customerId ? { ...c, wallet: c.wallet - amount } : c)),
             txns: amount ? ledger(s.txns, [{ id: uid("t"), customerId: stop.customerId, at: demoNow().toISOString(), kind: "debit", amount, note: missing.length ? "Delivery, part order" : "Daily delivery", orderId: stop.orderId }]) : s.txns,
             exceptions: [...autoTicket, ...s.exceptions],
             notices: [
-              ...(isMe ? [notice("customer", missing.length ? `Part of today's order was delivered. ${missing.map((m) => productById[m.productId]!.name).join(", ")} couldn't be delivered and wasn't charged.` : "Your milk has just been delivered.", missing.length ? "warn" : "good")] : []),
+              ...(isMe ? [notice("customer", missing.length ? `Part of today's order was delivered. ${missing.map((m) => `${m.qty} × ${productById[m.productId]!.name}`).join(", ")} couldn't be delivered and wasn't charged.` : "Your milk has just been delivered.", missing.length ? "warn" : "good")] : []),
               ...(missing.length ? [notice("admin", `Route ${routeById[stop.routeId]!.code}: part delivery at ${cust.flat}, ${cust.society} (order ${stop.orderId}).`, "warn")] : []),
               ...s.notices,
             ],
           };
-        }),
+        });
+      },
 
       flagStop: (stopId, kind, note) =>
         set((s) => {
@@ -501,17 +569,23 @@ export const useStore = create<State>()(
 
       setBottles: (stopId, n) => set((s) => ({ stops: s.stops.map((x) => (x.id === stopId ? { ...x, bottlesCollected: Math.max(0, n) } : x)) })),
 
-      /** Reopen a stop. Money already taken is reversed with its own ledger entry; the original stays in history. */
+      /**
+       * Reopen a stop. The delivery's charge is reversed with its own ledger entry, minus anything
+       * already refunded on it, so the customer never gets the same money back twice. The original
+       * debit and refunds stay in the history; a reversal is recorded even when nothing is left to return.
+       */
       undoStop: (stopId) =>
         set((s) => {
           const stop = s.stops.find((x) => x.id === stopId);
           if (!stop || (stop.status !== "delivered" && stop.status !== "issue")) return {};
-          const back = stop.status === "delivered" ? stop.charged ?? 0 : 0;
+          const hadCharge = stop.status === "delivered" && (stop.charged ?? 0) > 0;
+          const back = hadCharge ? Math.max(0, netCharged(stop.orderId, s.txns)) : 0;
+          const refunded = hadCharge ? (stop.charged ?? 0) - back : 0;
           return {
             // extras handed over at the door go back into the van's spares
             stops: s.stops.map((x) => (x.id === stopId ? { ...x, items: shortLines(x.items, x.atDoor ?? []), fromVan: shortLines(x.fromVan ?? [], x.atDoor ?? []), atDoor: undefined, status: "pending", at: undefined, bottlesCollected: 0, issueNote: undefined, delivered: undefined, charged: undefined, confirmed: false, confirmedAt: undefined } : x)),
             customers: back ? s.customers.map((c) => (c.id === stop.customerId ? { ...c, wallet: c.wallet + back } : c)) : s.customers,
-            txns: back ? ledger(s.txns, [{ id: uid("t"), customerId: stop.customerId, at: demoNow().toISOString(), kind: "refund", amount: back, note: "Delivery undone by rider (reversal)", orderId: stop.orderId }]) : s.txns,
+            txns: hadCharge ? ledger(s.txns, [{ id: uid("t"), customerId: stop.customerId, at: demoNow().toISOString(), kind: "reversal", amount: back, note: refunded > 0 ? `Delivery undone: ₹${back} returned (₹${refunded} was already refunded)` : "Delivery undone by rider", orderId: stop.orderId }]) : s.txns,
             // rider-raised tickets for this order no longer apply once the stop is reopened
             exceptions: s.exceptions.filter((e) => !(e.orderId === stop.orderId && e.source === "rider" && e.status === "open")),
           };
@@ -527,15 +601,16 @@ export const useStore = create<State>()(
 
       /* ---------------- admin ---------------- */
 
+      /** Refund a ticket, bounded by what is still charged and not already refunded or replaced. */
       resolve: (exId, refundAsked, resolution) => {
         const s = get();
         const ex = s.exceptions.find((e) => e.id === exId);
         if (!ex || ex.status === "resolved") return 0;
-        const cap = refundCap(ex, s.stops.find((x) => x.orderId === ex.orderId), s.txns);
-        const refund = Math.max(0, Math.min(refundAsked, cap));
+        const cap = refundCap(ex, ex.orderId ? orderById(s, ex.orderId) : undefined, s.txns, s.exceptions);
+        const refund = Math.max(0, Math.min(Math.floor(refundAsked), cap));
         const isMe = ex.customerId === s.meId;
         set({
-          exceptions: s.exceptions.map((e) => (e.id === exId ? { ...e, status: "resolved", refund, resolution } : e)),
+          exceptions: s.exceptions.map((e) => (e.id === exId ? { ...e, status: "resolved", refund, resolution, compensation: refund ? { kind: "refund", amount: refund } : { kind: "none" } } : e)),
           customers: refund ? s.customers.map((c) => (c.id === ex.customerId ? { ...c, wallet: c.wallet + refund } : c)) : s.customers,
           txns: refund ? ledger(s.txns, [{ id: uid("t"), customerId: ex.customerId, at: demoNow().toISOString(), kind: "refund", amount: refund, note: `Refund: ${kindLabel[ex.kind].toLowerCase()}`, orderId: ex.orderId }]) : s.txns,
           notices: isMe ? [notice("customer", refund ? `We've credited ₹${refund} for your ${kindLabel[ex.kind].toLowerCase()} report.` : `Your ${kindLabel[ex.kind].toLowerCase()} report is resolved: ${resolution}.`, "good"), ...s.notices] : s.notices,
@@ -543,32 +618,11 @@ export const useStore = create<State>()(
         return refund;
       },
 
-      /** Put the ticket's missing items on the next run that can still change. Charged only if delivered. */
-      scheduleRetry: (exId) => {
-        const s = get();
-        const ex = s.exceptions.find((e) => e.id === exId);
-        if (!ex || ex.status === "resolved" || !ex.items?.length) return null;
-        const c = s.customers.find((x) => x.id === ex.customerId)!;
-        const mine = s.overrides[c.id] ?? {};
-        let date = firstEditableDate();
-        for (let i = 0; i < 21; i++) {
-          const st = mine[date]?.status;
-          if (st !== "skipped" && st !== "vacation" && !(c.startDate && date < c.startDate)) break;
-          date = dayKey(addDays(fromKey(date), 1));
-        }
-        const cur = mine[date];
-        const qty = { ...cur?.qty };
-        const base = itemsOn(c, cur, date);
-        for (const i of ex.items) qty[i.productId] = (base.find((b) => b.productId === i.productId)?.qty ?? 0) + i.qty;
-        const what = ex.items.map((i) => `${i.qty} × ${productById[i.productId]!.name}`).join(", ");
-        const when = fromKey(date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
-        set({
-          overrides: { ...s.overrides, [c.id]: { ...mine, [date]: { ...cur, qty } } },
-          exceptions: s.exceptions.map((e) => (e.id === exId ? { ...e, status: "resolved", refund: 0, resolution: `Retry: ${what} added to the ${when} delivery, charged only when delivered` } : e)),
-          notices: c.id === s.meId ? [notice("customer", `We'll bring ${what} with your ${when} delivery. You pay only when it arrives.`, "good"), ...s.notices] : s.notices,
-        });
-        return date;
-      },
+      /** Items that never arrived: deliver them on the next open run, charged only when delivered. */
+      scheduleRetry: (exId) => scheduleOneOff(exId, "retry"),
+
+      /** Delivered, paid-for items that were defective: replace them free on the next open run. */
+      scheduleReplacement: (exId) => scheduleOneOff(exId, "replacement"),
 
       broadcast: (text) => set((s) => ({ notices: [notice("rider", text, "warn"), ...s.notices] })),
 
@@ -630,6 +684,7 @@ export const useStore = create<State>()(
             nextSeq: {},
             dayOffset,
             stopsDate: date,
+            pastOrders: archive(s.stops, s.pastOrders),
             stops: generateStops(s.customers, s.overrides, date, prevSeq),
             shift: freshShift(false),
             simOn: false,
@@ -691,7 +746,7 @@ export const useStore = create<State>()(
     }),
     {
       name: KEY,
-      version: 6,
+      version: 7,
       storage: createJSONStorage(() => tabStorage),
       // sign-in, basket and the simulation switch stay with the tab; everything else is shared
       partialize: (s) => {
@@ -719,6 +774,11 @@ export const useStore = create<State>()(
         }
         // v5 saved the sign-in with the shared data; it now belongs to each tab
         const { session: _b, role: _c, meId: _d, cart: _e, ...shared } = p;
+        if (version < 7) {
+          // order history and refund/reversal kinds arrived in v7: older undo entries were stored as refunds
+          shared.pastOrders = (shared.pastOrders as Stop[] | undefined) ?? [];
+          shared.txns = ((shared.txns as Txn[] | undefined) ?? []).map((t) => (t.kind === "refund" && t.note?.startsWith("Delivery undone") ? { ...t, kind: "reversal" as const } : t));
+        }
         if (version < 6) {
           // wallet checks start from the balances saved at the upgrade
           shared.opening = Object.fromEntries(((shared.customers as Customer[] | undefined) ?? []).map((c) => [c.id, c.wallet]));
@@ -733,7 +793,7 @@ export const useStore = create<State>()(
         const today = todayKey();
         if (state.stopsDate !== today) {
           const prevSeq = { ...Object.fromEntries(state.stops.map((x) => [x.customerId, x.seq])), ...state.nextSeq };
-          useStore.setState({ nextSeq: {}, stopsDate: today, stops: generateStops(state.customers, state.overrides, today, prevSeq), shift: freshShift(false) });
+          useStore.setState({ nextSeq: {}, stopsDate: today, pastOrders: archive(state.stops, state.pastOrders ?? []), stops: generateStops(state.customers, state.overrides, today, prevSeq), shift: freshShift(false) });
         }
       },
     },
@@ -773,3 +833,6 @@ export const useAccount = (role: Role): DemoAccount => {
   const initials = me.contact.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
   return { ...base, name: me.contact, sub: `${me.flat}, ${me.society}`, initials, id: me.phone.replace(/\D/g, "").slice(-10) };
 };
+
+/** Find an order by its ID, in this morning's run or in earlier mornings. */
+export const orderById = (s: Pick<State, "stops" | "pastOrders">, orderId: string) => s.stops.find((x) => x.orderId === orderId) ?? s.pastOrders?.find((x) => x.orderId === orderId);

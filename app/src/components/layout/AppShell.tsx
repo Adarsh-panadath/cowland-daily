@@ -3,7 +3,7 @@ import { NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
   Bell, CalendarDays, ShoppingBasket, Wallet, ReceiptText, LifeBuoy, Route as RouteIcon, BarChart3,
-  LayoutDashboard, Users, TriangleAlert, FlaskConical, RotateCcw, Truck, X, CheckCircle2, Info, LogOut, ChevronDown, ChartNoAxesCombined, MapPinned, Database } from "lucide-react";
+  LayoutDashboard, Users, TriangleAlert, FlaskConical, RotateCcw, Truck, X, CheckCircle2, Info, LogOut, ChevronDown, ChartNoAxesCombined, MapPinned, Database, MoreHorizontal } from "lucide-react";
 import { useStore, useAccount } from "../../store/useStore";
 import { accounts } from "../../lib/auth";
 import { toast, useToast } from "../../store/toast";
@@ -290,23 +290,58 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main className="mx-auto max-w-[1240px] px-4 pb-28 pt-5 sm:px-6 lg:pb-12 lg:pt-7">{children}</main>
 
       {/* Mobile tab bar */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t print:hidden border-milk-2 bg-white/95 backdrop-blur lg:hidden" aria-label="Sections">
-        <div className="mx-auto flex max-w-lg justify-around px-1 pb-[max(env(safe-area-inset-bottom),8px)] pt-2">
-          {items.map((i) => (
-            <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => clsx("flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl py-1 font-semibold", items.length > 5 ? "px-0 text-[10px]" : "px-1 text-[11px]", isActive ? "text-ink" : "text-ink-soft")}>
-              {({ isActive }) => (
-                <>
-                  <span className={clsx("grid h-7 place-items-center rounded-full", items.length > 5 ? "w-9" : "w-11", isActive && "bg-marigold-soft")}>{i.icon}</span>
-                  <span className="w-full truncate text-center">{i.short ?? i.label}</span>
-                </>
-              )}
-            </NavLink>
-          ))}
-        </div>
-      </nav>
+      <MobileNav items={items} role={role} />
       <Toaster />
     </div>
   );
 }
 
 export { Toaster };
+
+/** Hub staff get the three sections they use most, with everything else under More. */
+const PRIMARY_ADMIN = ["/admin", "/admin/routes", "/admin/tickets"];
+
+function MobileNav({ items, role }: { items: NavItem[]; role: Role }) {
+  const loc = useLocation();
+  const [more, setMore] = useState(false);
+  useEffect(() => setMore(false), [loc.pathname]);
+  const primary = role === "admin" ? items.filter((i) => PRIMARY_ADMIN.includes(i.to)) : items;
+  const rest = role === "admin" ? items.filter((i) => !PRIMARY_ADMIN.includes(i.to)) : [];
+  const inRest = rest.some((i) => loc.pathname.startsWith(i.to));
+  const cell = "flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-1 py-1 text-[11px] font-semibold";
+  return (
+    <>
+      {more && (
+        <div className="fixed inset-0 z-40 bg-ink/40 lg:hidden" onClick={() => setMore(false)}>
+          <div role="dialog" aria-label="More sections" onClick={(e) => e.stopPropagation()} className="absolute inset-x-0 bottom-[68px] mx-3 animate-rise rounded-2xl bg-white p-2 shadow-pop">
+            {rest.map((i) => (
+              <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => clsx("flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold", isActive ? "bg-marigold-soft text-ink" : "text-ink-3 hover:bg-milk")}>
+                {i.icon}{i.label}
+              </NavLink>
+            ))}
+          </div>
+        </div>
+      )}
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t print:hidden border-milk-2 bg-white/95 backdrop-blur lg:hidden" aria-label="Sections">
+        <div className="mx-auto flex max-w-lg justify-around px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2">
+          {primary.map((i) => (
+            <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => clsx(cell, isActive ? "text-ink" : "text-ink-soft")}>
+              {({ isActive }) => (
+                <>
+                  <span className={clsx("grid h-7 w-11 place-items-center rounded-full", isActive && "bg-marigold-soft")}>{i.icon}</span>
+                  <span className="w-full truncate text-center">{i.short ?? i.label}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
+          {rest.length > 0 && (
+            <button onClick={() => setMore(!more)} aria-expanded={more} aria-haspopup="dialog" className={clsx(cell, more || inRest ? "text-ink" : "text-ink-soft")}>
+              <span className={clsx("grid h-7 w-11 place-items-center rounded-full", (more || inRest) && "bg-marigold-soft")}><MoreHorizontal size={18} /></span>
+              <span>More</span>
+            </button>
+          )}
+        </div>
+      </nav>
+    </>
+  );
+}

@@ -75,7 +75,7 @@ export default function LiveRoutes() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight">Live routes</h1>
-          <p className="text-ink-soft">Pick a route to follow the van. Route 04 moves when you deliver from the rider app.</p>
+          <p className="text-ink-soft">Pick a route to follow the van. Route 04 moves when you deliver from the rider app; routes 01, 02, 03 and 05 are simulated (press Run live simulation).</p>
         </div>
         <div className="flex flex-wrap gap-2"><NextMorningButton /><SimToggle /></div>
       </div>

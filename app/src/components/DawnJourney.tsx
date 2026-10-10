@@ -77,7 +77,8 @@ export function DawnJourney() {
   const vanX = min < 270 ? 70 : min > 348 ? 470 : 70 + ((min - 270) / 78) * 400;
 
   return (
-    <div className="overflow-hidden rounded-[28px] shadow-pop ring-1 ring-white/10">
+    <div className="relative overflow-hidden rounded-[28px] shadow-pop ring-1 ring-white/10">
+      <span className="absolute right-3 top-3 z-10 rounded-full bg-ink/60 px-2.5 py-1 text-[11px] font-semibold text-white/80">Illustrative journey</span>
       <div className="relative h-[260px] sm:h-[300px]" style={{ background: `linear-gradient(${top}, ${bottom})` }}>
         <svg viewBox="0 0 540 300" preserveAspectRatio="xMidYMax slice" className="absolute inset-0 h-full w-full" aria-hidden>
           {/* stars fade as dawn comes */}

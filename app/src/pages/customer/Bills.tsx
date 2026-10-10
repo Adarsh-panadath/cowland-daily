@@ -9,7 +9,8 @@ export default function Bills() {
   const txns = useStore((s) => s.txns.filter((t) => t.customerId === s.meId));
   const debits = txns.filter((t) => t.kind === "debit");
   const refunds = txns.filter((t) => t.kind === "refund").reduce((s, t) => s + t.amount, 0);
-  const total = debits.reduce((s, t) => s + t.amount, 0);
+  // undone deliveries don't count as spending
+  const total = debits.reduce((s, t) => s + t.amount, 0) - txns.filter((t) => t.kind === "reversal").reduce((s, t) => s + t.amount, 0);
   const now = new Date();
   const month = now.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 
@@ -51,7 +52,7 @@ export default function Bills() {
                   <tr key={t.id} className="hover:bg-milk/60">
                     <td className="whitespace-nowrap px-5 py-3"><span className="font-semibold">{dayMonth(k)}</span> <span className="text-ink-soft">{weekday(k)}</span></td>
                     <td className="px-3 py-3"><span className="flex items-center gap-2"><FileText size={14} className="text-ink-soft" />{t.note}</span></td>
-                    <td className="px-3 py-3">{t.kind === "debit" ? <Badge tone="neutral">Paid from wallet</Badge> : t.kind === "topup" ? <Badge tone="good">Top-up</Badge> : <Badge tone="warn">Refund</Badge>}</td>
+                    <td className="px-3 py-3">{t.kind === "debit" ? <Badge tone="neutral">Paid from wallet</Badge> : t.kind === "topup" ? <Badge tone="good">Top-up</Badge> : t.kind === "reversal" ? <Badge tone="neutral">Delivery undone</Badge> : <Badge tone="warn">Refund</Badge>}</td>
                     <td className="whitespace-nowrap px-5 py-3 text-right font-semibold tabular">{t.kind === "debit" ? "−" : "+"}{inr(t.amount)}</td>
                   </tr>
                 );

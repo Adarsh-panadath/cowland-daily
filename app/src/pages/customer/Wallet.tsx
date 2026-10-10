@@ -24,7 +24,7 @@ export default function WalletPage() {
       return { day: dayMonth(k), spent };
     });
   }, [txns]);
-  const monthSpend = txns.filter((t) => t.kind === "debit" && new Date(t.at) > addDays(new Date(), -30)).reduce((s, t) => s + t.amount, 0);
+  const monthSpend = txns.filter((t) => (t.kind === "debit" || t.kind === "reversal") && new Date(t.at) > addDays(new Date(), -30)).reduce((s, t) => s + (t.kind === "debit" ? t.amount : -t.amount), 0);
   const list = txns.filter((t) => filter === "all" || t.kind === filter);
 
   return (

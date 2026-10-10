@@ -6,8 +6,8 @@ import { Logo } from "../components/Logo";
 import { Badge, Button, Card, Modal, Segmented, inputCls } from "../components/ui";
 import { toast } from "../store/toast";
 import { Toaster } from "../components/layout/AppShell";
-import { useStore, useToday, lineTotal } from "../store/useStore";
-import { integrityChecks, netCharged } from "../store/rules";
+import { useStore, useToday } from "../store/useStore";
+import { integrityChecks, netCharged, orderTotal } from "../store/rules";
 import { productById, routeById } from "../data/seed";
 import type { Actor, LineItem, Stop } from "../data/types";
 import { clock, dayMonth, inr } from "../lib/format";
@@ -33,7 +33,8 @@ export function DatabaseView({ embedded = false }: { embedded?: boolean }) {
   const [open, setOpen] = useState<string | null>(null);
   const [more, setMore] = useState(1);
   const [resetOpen, setResetOpen] = useState(false);
-  const checks = useMemo(() => integrityChecks({ customers: s.customers, stops: s.stops, txns: s.txns, opening: s.opening }), [s.customers, s.stops, s.txns, s.opening]);
+  const checks = useMemo(() => integrityChecks({ customers: s.customers, stops: [...s.stops, ...s.pastOrders], txns: s.txns, opening: s.opening, today: s.stopsDate }), [s.customers, s.stops, s.pastOrders, s.txns, s.opening, s.stopsDate]);
+  const [when, setWhen] = useState<"today" | "earlier">("today");
   const passing = checks.filter((c) => c.ok).length;
   const cust = (id: string) => s.customers.find((c) => c.id === id);
   const match = (...f: (string | undefined)[]) => !q || f.join(" ").toLowerCase().includes(q.toLowerCase());
@@ -49,7 +50,7 @@ export function DatabaseView({ embedded = false }: { embedded?: boolean }) {
     URL.revokeObjectURL(url);
   };
 
-  const counts: Record<Tab, number> = { activity: s.events.length, orders: s.stops.length, ledger: s.txns.length, households: s.customers.length, tickets: s.exceptions.length, waitlist: s.waitlist.length };
+  const counts: Record<Tab, number> = { activity: s.events.length, orders: s.stops.length + s.pastOrders.length, ledger: s.txns.length, households: s.customers.length, tickets: s.exceptions.length, waitlist: s.waitlist.length };
   const label: Record<Tab, string> = { activity: "Activity", orders: "Orders", ledger: "Ledger", households: "Households", tickets: "Tickets", waitlist: "Waitlist" };
 
   const BODY = (
@@ -120,7 +121,7 @@ export function DatabaseView({ embedded = false }: { embedded?: boolean }) {
         })()}
 
         {tab === "orders" && (() => {
-          const rows = s.stops.filter((o) => (route === "all" || o.routeId === route) && match(o.orderId, cust(o.customerId)?.contact, cust(o.customerId)?.flat, cust(o.customerId)?.society, o.status)).sort((a, b) => a.routeId.localeCompare(b.routeId) || a.seq - b.seq);
+          const rows = (when === "today" ? s.stops : s.pastOrders).filter((o) => (route === "all" || o.routeId === route) && match(o.orderId, cust(o.customerId)?.contact, cust(o.customerId)?.flat, cust(o.customerId)?.society, o.status)).sort((a, b) => b.date.localeCompare(a.date) || a.routeId.localeCompare(b.routeId) || a.seq - b.seq);
           return (
             <Card>
               <div className="flex flex-wrap items-center gap-2 px-5 pt-4 text-sm">
@@ -128,7 +129,8 @@ export function DatabaseView({ embedded = false }: { embedded?: boolean }) {
                   <option value="all">All routes</option>
                   {Object.values(routeById).map((r) => <option key={r.id} value={r.id}>Route {r.code}</option>)}
                 </select>
-                <span className="text-ink-soft">Orders for the {dayMonth(today)} delivery morning. Tap a row for its history.</span>
+                <Segmented value={when} onChange={(v) => { setWhen(v); setMore(1); setOpen(null); }} options={[{ value: "today", label: `This morning ${s.stops.length}` }, { value: "earlier", label: `Earlier ${s.pastOrders.length}` }]} />
+                <span className="text-ink-soft">{when === "today" ? `Orders for the ${dayMonth(today)} delivery morning.` : "Earlier mornings, kept with what was delivered and charged."} Tap a row for its history.</span>
               </div>
               <Table head={["Order", "Household", "Route · stop", "Status", "Ordered", "Delivered", "Charged", ""]} empty="No orders match." rows={rows.slice(0, LIMIT * more).map((o) => {
                 const c = cust(o.customerId);
@@ -137,13 +139,13 @@ export function DatabaseView({ embedded = false }: { embedded?: boolean }) {
                 return (
                   <Fragment key={o.id}>
                     <tr onClick={() => setOpen(isOpen ? null : o.orderId)} className={clsx("cursor-pointer hover:bg-milk/60", isOpen && "bg-marigold-soft/40")}>
-                      <Td className="whitespace-nowrap tabular font-semibold">{o.orderId}</Td>
+                      <Td className="whitespace-nowrap tabular font-semibold">{o.orderId}<span className="block text-[11px] font-normal text-ink-soft">{dayMonth(o.date)}</span></Td>
                       <Td>{c?.contact}<span className="block text-xs text-ink-soft">{c?.flat}, {c?.society}</span></Td>
                       <Td className="whitespace-nowrap tabular">{routeById[o.routeId]?.code} · #{o.seq}</Td>
                       <Td><Badge tone={statusTone[o.status]}>{o.status}</Badge>{o.confirmed && <span className="mt-0.5 block text-xs text-neem-deep">confirmed</span>}{o.releasedAt && <span className="mt-0.5 block text-xs text-neem-deep">won back</span>}</Td>
                       <Td className="text-ink-3">{items(o.items)}{o.fromVan?.length ? <span className="block text-xs text-marigold-deep">incl. {items(o.fromVan)} from van spares</span> : null}</Td>
                       <Td className="text-ink-3">{o.status === "delivered" ? items(o.delivered) : "—"}</Td>
-                      <Td className="whitespace-nowrap text-right tabular font-semibold">{net ? inr(net) : "—"}<span className="block text-xs font-normal text-ink-soft">of {inr(lineTotal(o.items))}</span></Td>
+                      <Td className="whitespace-nowrap text-right tabular font-semibold">{net ? inr(net) : "—"}<span className="block text-xs font-normal text-ink-soft">of {inr(orderTotal(o))}</span></Td>
                       <Td><ChevronDown size={16} className={clsx("text-ink-soft transition", isOpen && "rotate-180")} /></Td>
                     </tr>
                     {isOpen && (
@@ -161,12 +163,12 @@ export function DatabaseView({ embedded = false }: { embedded?: boolean }) {
           const rows = s.txns.filter((t) => match(t.orderId, t.note, cust(t.customerId)?.contact, t.kind));
           return (
             <Card>
-              <p className="px-5 pt-4 text-sm text-ink-soft">Every rupee in or out of a wallet. Entries marked <b>demo</b> were made by clicks in this browser; the rest is sample history.</p>
+              <p className="px-5 pt-4 text-sm text-ink-soft">Every rupee in or out of a wallet. <b>Refunds</b> compensate a problem; <b>undo reversals</b> return what's left of a charge when a delivery is undone. Entries marked <b>demo</b> were made by clicks in this browser; the rest is sample history.</p>
               <Table head={["When", "Household", "Kind", "Order", "Note", "Amount"]} empty="No entries match." rows={rows.slice(0, LIMIT * more).map((t) => (
                 <tr key={t.id}>
                   <Td className="whitespace-nowrap tabular text-ink-soft">{dayMonth(t.at.slice(0, 10))}<span className="block text-[11px]">{clock(t.at)}</span></Td>
                   <Td>{cust(t.customerId)?.contact ?? t.customerId}</Td>
-                  <Td><Badge tone={t.kind === "debit" ? "neutral" : "good"}>{t.kind}</Badge>{t.live && <span className="ml-1 text-[11px] font-semibold text-marigold-deep">demo</span>}</Td>
+                  <Td><Badge tone={t.kind === "debit" ? "neutral" : t.kind === "reversal" ? "warn" : "good"}>{t.kind === "reversal" ? "undo reversal" : t.kind}</Badge>{t.live && <span className="ml-1 text-[11px] font-semibold text-marigold-deep">demo</span>}</Td>
                   <Td className="whitespace-nowrap tabular">{t.orderId ?? ""}</Td>
                   <Td className="text-ink-3">{t.note}</Td>
                   <Td className={clsx("whitespace-nowrap text-right tabular font-semibold", t.kind !== "debit" && "text-neem-deep")}>{t.kind === "debit" ? `−${inr(t.amount)}` : `+${inr(t.amount)}`}</Td>

@@ -1,8 +1,8 @@
 /** Customer-side cards for the delivery-efficiency ideas: van spares, held-order shortfall, failed doors, neighbour invites. */
 import { useState } from "react";
 import { Truck, Plus, AlertTriangle, DoorClosed, Share2, Check } from "lucide-react";
-import { useStore, useMe, lineTotal } from "../store/useStore";
-import { sparesLeft } from "../store/rules";
+import { useStore, useMe } from "../store/useStore";
+import { sparesLeft, orderTotal } from "../store/rules";
 import { productById, riderById, routeById } from "../data/seed";
 import type { Stop } from "../data/types";
 import { dayMonth, inr, weekday } from "../lib/format";
@@ -59,7 +59,7 @@ export function Shortfall({ date, total, onTopUp }: { date: string; total: numbe
   const me = useMe();
   // today's milk, if still on the way, comes out of the wallet first
   const today = useStore((s) => s.stops.find((x) => x.customerId === s.meId && x.status === "pending"));
-  const after = me.wallet - (today ? lineTotal(today.items) : 0);
+  const after = me.wallet - (today ? orderTotal(today) : 0);
   const short = total - after;
   if (short <= 0 || total === 0) return null;
   const round = Math.ceil(short / 100) * 100;

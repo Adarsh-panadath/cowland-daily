@@ -107,7 +107,7 @@ test("a retry puts missing items on the next open order, charged only on deliver
   assert.ok(when > todayKey());
   const c = S().customers.find((x) => x.id === id)!;
   assert.equal(c.wallet, 1000 - 96, "nothing charged for the retry yet");
-  assert.equal(S().overrides[id]![when]!.qty!.paneer, 1);
+  assert.equal(S().overrides[id]![when]!.add!.paneer, 1, "redelivery kept separate from the regular order");
   assert.equal(S().scheduleRetry(auto.id), null, "can't schedule the same retry twice");
 });
 
@@ -123,7 +123,7 @@ test("deliver, undo, deliver leaves one net charge and clears the old acknowledg
   assert.equal(reopened.status, "pending");
   assert.equal(reopened.confirmed, false);
   const ledger = S().txns.filter((t) => t.orderId === stop.orderId);
-  assert.deepEqual(ledger.map((t) => t.kind).sort(), ["debit", "refund"], "the original debit stays, with a reversal");
+  assert.deepEqual(ledger.map((t) => t.kind).sort(), ["debit", "reversal"], "the original debit stays, with a reversal");
   S().deliver(stop.id);
   assert.equal(netCharged(stop.orderId, S().txns), charge);
   assert.equal(S().customers.find((c) => c.id === owner)!.wallet, w0 - charge);

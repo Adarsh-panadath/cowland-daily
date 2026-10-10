@@ -40,7 +40,7 @@ export function RoutePlanner({ routeId }: { routeId: string }) {
     <Card>
       <CardHead
         title={<span className="flex items-center gap-2"><RouteIcon size={18} /> Route planner</span>}
-        sub={`Compares Route ${route.code}'s current stop order with a shorter one, using the same travel model for both.`}
+        sub={`An illustrative model: it reorders Route ${route.code}'s stops to cut driving time and distance, scoring the current and suggested order with the same travel model. Van capacity isn't checked yet.`}
         right={<Badge tone="neutral">Illustrative model</Badge>}
       />
       <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -85,7 +85,8 @@ export function RoutePlanner({ routeId }: { routeId: string }) {
               <li>Homes have made-up map positions grouped by society. A real version would use geocoded addresses and a road-distance service.</li>
               <li>Travel time is straight-line distance × {PLAN_ASSUMPTIONS.roadFactor} at {PLAN_ASSUMPTIONS.speedKmh} km/h. Each door takes {PLAN_ASSUMPTIONS.serviceMin} min, plus {PLAN_ASSUMPTIONS.perItemMin} min per extra item.</li>
               <li>The van leaves the hub {PLAN_ASSUMPTIONS.leaveBeforeWindowMin} min before the {route.window} window. Late means after the window closes.</li>
-              <li>Order found with nearest-neighbour, then 2-opt swaps. Held orders are left out because they aren't on the van.</li>
+              <li>Order found with nearest-neighbour, then 2-opt swaps. The objective is driving time only; late drops are reported but not optimised for. Held orders are left out because they aren't on the van.</li>
+              <li>Not yet modelled: van capacity (crates, litres), traffic, one-way streets and customers' preferred drop times.</li>
             </ul>
           </details>
         </div>

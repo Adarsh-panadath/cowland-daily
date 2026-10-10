@@ -198,6 +198,8 @@ export default function RiderRound() {
                       {g < i.qty && <p className={clsx("text-sm font-bold text-brick", lang !== "en" && "font-mr")}>{i.qty - g} {tr("short", lang)}</p>}
                       {g > i.qty && <p className={clsx("text-sm font-bold text-marigold-deep", lang !== "en" && "font-mr")}>+{g - i.qty} {tr("fromSpare", lang)}</p>}
                       {bought > 0 && g === i.qty && <p className={clsx("text-xs font-bold text-marigold-deep", lang !== "en" && "font-mr")}>+{bought} {tr("fromSpare", lang)}</p>}
+                      {(next.free?.[i.productId] ?? 0) > 0 && <p className={clsx("text-xs font-bold text-neem-deep", lang !== "en" && "font-mr")}>{next.free![i.productId]} {tr("freeRepl", lang)}</p>}
+                      {next.links?.some((l) => l.kind === "retry" && l.productId === i.productId) && <p className={clsx("text-xs font-bold text-marigold-deep", lang !== "en" && "font-mr")}>{next.links.filter((l) => l.kind === "retry" && l.productId === i.productId).reduce((n, l) => n + l.qty, 0)} {tr("redeliver", lang)}</p>}
                     </div>
                     <button aria-label={`One less ${productById[i.productId]!.name}`} disabled={g <= 0} onClick={() => setGive(i.productId, g - 1)} className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white text-ink active:scale-95 disabled:opacity-30"><Minus size={26} /></button>
                     <span className="w-10 text-center font-display text-5xl font-bold tabular" aria-live="polite">{g}</span>

@@ -88,11 +88,11 @@ export function Progress({ value, color, className, height = 8 }: { value: numbe
 export function Stepper({ value, onChange, min = 0, max = 20, label }: { value: number; onChange: (n: number) => void; min?: number; max?: number; label: string }) {
   return (
     <div className="inline-flex items-center rounded-xl bg-milk-2 p-1">
-      <button aria-label={`Fewer ${label}`} disabled={value <= min} onClick={() => onChange(value - 1)} className="grid h-8 w-8 place-items-center rounded-lg text-ink hover:bg-white disabled:opacity-30">
+      <button type="button" aria-label={`Fewer ${label}`} disabled={value <= min} onClick={() => onChange(value - 1)} className="grid h-8 w-8 place-items-center rounded-lg text-ink hover:bg-white disabled:opacity-30">
         <Minus size={16} />
       </button>
       <span className="w-8 text-center font-semibold tabular-nums text-ink" aria-live="polite">{value}</span>
-      <button aria-label={`More ${label}`} disabled={value >= max} onClick={() => onChange(value + 1)} className="grid h-8 w-8 place-items-center rounded-lg text-ink hover:bg-white disabled:opacity-30">
+      <button type="button" aria-label={`More ${label}`} disabled={value >= max} onClick={() => onChange(value + 1)} className="grid h-8 w-8 place-items-center rounded-lg text-ink hover:bg-white disabled:opacity-30">
         <Plus size={16} />
       </button>
     </div>

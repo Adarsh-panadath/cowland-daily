@@ -69,10 +69,10 @@ export default function Landing() {
             <h1 className="mt-3 font-display text-[44px] font-bold leading-[1.02] tracking-[-0.02em] sm:text-[64px]">
               Milked at 3:15.
               <br />
-              At your door by 6.
+              At your door by dawn.
             </h1>
             <p className="mt-6 max-w-[34rem] text-lg leading-relaxed text-white/75">
-              Cowland Daily brings raw-chilled A2 milk, matka dahi and bilona ghee from our Khuldabad farm to your doorstep before the city wakes up. Plan your week, skip a day or add extra for guests, right up to 10 PM the night before.
+              Cowland Daily brings raw-chilled A2 milk, matka dahi and bilona ghee from our Khuldabad farm to your doorstep before the city wakes up. Each locality has its own delivery window, ending between 5:50 and 6:20 AM. Plan your week, skip a day or add extra for guests, right up to 10 PM the night before.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button size="lg" variant="accent" onClick={() => jump("areas")}>Plan my milk</Button>
@@ -81,7 +81,7 @@ export default function Landing() {
               </button>
             </div>
             <dl className="mt-12 grid max-w-md grid-cols-3 gap-6 border-t border-white/10 pt-6">
-              {[[String(customerCount), "homes on five routes"], ["98.4%", "drops before 6:15 AM"], ["0", "preservatives, ever"]].map(([v, l]) => (
+              {[[String(customerCount), "homes on five routes"], ["98.4%", "drops inside their window (sample data)"], ["0", "preservatives added (illustrative)"]].map(([v, l]) => (
                 <div key={l}>
                   <dt className="sr-only">{l}</dt>
                   <dd className="font-display text-3xl font-bold tabular">{v}</dd>
@@ -89,6 +89,7 @@ export default function Landing() {
                 </div>
               ))}
             </dl>
+            <p className="mt-4 max-w-md text-xs leading-relaxed text-white/50">Prototype content: the farm, product and lab details on this site are illustrative and not verified claims. Figures marked sample come from generated data.</p>
           </div>
           <DawnJourney />
         </div>
@@ -214,7 +215,7 @@ export default function Landing() {
         <div className="mt-10 grid gap-5 lg:grid-cols-3">
           {[
             { r: "customer" as Role, icon: <Smartphone size={22} />, t: "Customer app", who: "The Deshmukh family, Anand Vihar", b: "A two-week milk diary, skip and vacation controls, a shop that adds to tomorrow's crate, wallet top-ups and help tickets.", c: "#F2A900" },
-            { r: "rider" as Role, icon: <Truck size={22} />, t: "Rider app", who: "Ganesh Shinde, Route 04", b: "Door-by-door drop list in route order, bottle returns, crate stock that counts down, and one-tap problem reports.", c: "#2F7D5B" },
+            { r: "rider" as Role, icon: <Truck size={22} />, t: "Rider app", who: "Ganesh Shinde, Route 04", b: "Door-by-door drop list in route order, bottle returns, crate stock that counts down, and one-tap problem reports. The demo rider drives Route 04; the other four routes are simulated.", c: "#2F7D5B" },
             { r: "admin" as Role, icon: <LayoutDashboard size={22} />, t: "Hub dashboard", who: "Dispatch team, Samarth Nagar", b: "Live route progress, a simulation you can switch on, ticket handling with refunds, customers and daily lab results.", c: "#6C8EF5" },
           ].map((x) => (
             <button key={x.r} onClick={() => open(x.r)} className="group flex flex-col rounded-3xl bg-white p-6 text-left shadow-lift transition hover:-translate-y-0.5 hover:shadow-pop">

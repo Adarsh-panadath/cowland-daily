@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { orderTotal } from "../../store/rules";
 import { Pause, Play, Megaphone, SunMedium } from "lucide-react";
-import { useStore, lineTotal, volumeMl } from "../../store/useStore";
+import { useStore, volumeMl } from "../../store/useStore";
 import { routes } from "../../data/seed";
 import type { Stop } from "../../data/types";
 import { Button, Field, Modal, inputCls } from "../../components/ui";
@@ -52,7 +53,7 @@ export function routeStats(stops: Stop[]) {
     const pct = total ? ((delivered.length + issues.length) / total) * 100 : 0;
     const litresPlanned = rs.reduce((s, x) => s + volumeMl(x.items), 0) / 1000;
     const litresDone = delivered.reduce((s, x) => s + volumeMl(x.delivered ?? x.items), 0) / 1000;
-    const value = delivered.reduce((s, x) => s + (x.charged ?? lineTotal(x.items)), 0);
+    const value = delivered.reduce((s, x) => s + (x.charged ?? orderTotal(x)), 0);
     const last = delivered.map((s) => s.at!).sort().at(-1);
     const remaining = total - delivered.length - issues.length;
     const eta = new Date((last ? new Date(last).getTime() : demoAt(5, 15).getTime()) + remaining * 2.6 * 60000);

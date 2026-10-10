@@ -25,6 +25,18 @@ export type DayStatus = "scheduled" | "skipped" | "vacation";
 export interface DayOverride {
   status?: DayStatus;
   qty?: Record<string, number>;
+  add?: Record<string, number>; // paid redelivery of items that never arrived (charged on delivery)
+  free?: Record<string, number>; // free replacement of delivered, defective items
+  links?: OrderLink[]; // which tickets these came from
+}
+
+/** Ties a one-off redelivery or replacement to the ticket and order it came from. */
+export interface OrderLink {
+  ticketId: string;
+  fromOrder: string;
+  kind: "retry" | "replacement";
+  productId: string;
+  qty: number;
 }
 
 export interface PlanChange {
@@ -97,6 +109,9 @@ export interface Stop {
   holdReason?: string;
   fromVan?: LineItem[]; // spares bought from the van this morning (already included in items)
   atDoor?: LineItem[]; // extras the rider handed over at the door from the spares (part of fromVan)
+  prices?: Record<string, number>; // unit prices when the order was built, so old charges never change
+  free?: Record<string, number>; // free replacement quantities included in items (never charged)
+  links?: OrderLink[];
   releasedAt?: string; // when a held order went back on the van after a top-up
 }
 
@@ -115,13 +130,14 @@ export interface Exception {
   resolution?: string;
   orderId?: string;
   items?: LineItem[]; // affected lines
+  compensation?: { kind: "refund" | "replacement" | "retry" | "none"; amount?: number; date?: string; items?: LineItem[] };
 }
 
 export interface Txn {
   id: string;
   customerId: string;
   at: string;
-  kind: "debit" | "topup" | "refund";
+  kind: "debit" | "topup" | "refund" | "reversal"; // refund: compensation for a problem; reversal: a delivery undone
   amount: number;
   note: string;
   orderId?: string;

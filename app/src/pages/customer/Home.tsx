@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { orderTotal } from "../../store/rules";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
 import { Lock, Plane, PauseCircle, PlayCircle, Plus, Wallet, Undo2, PencilLine, CalendarClock, AlertTriangle } from "lucide-react";
-import { useStore, useMe, useMyOverrides, useToday, itemsOn, planOn, lineTotal, volumeMl, type EditResult } from "../../store/useStore";
+import { useStore, useMe, useMyOverrides, useToday, itemsOn, planOn, lineTotal, volumeMl, routeDispatched, type EditResult } from "../../store/useStore";
+import { chargeableOn, oneOffsOn } from "../../store/rules";
 import { productById, products, routeById, riderById } from "../../data/seed";
 import type { LineItem } from "../../data/types";
 import { addDays, dayKey, dayMonth, firstEditableDate, fromKey, inr, isLockedDate, litres, longDate, weekday } from "../../lib/format";
@@ -38,13 +40,13 @@ export default function CustomerHome() {
   const [topUp, setTopUp] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState<number | undefined>(undefined);
   const nextDay = days[0]!;
-  const nextTotal = lineTotal(itemsOn(me, overrides[nextDay], nextDay));
+  const nextTotal = chargeableOn(me, overrides[nextDay], nextDay);
   const [report, setReport] = useState(false);
 
   const first = firstEditableDate();
   const regular = planOn(me, first);
   const dailyCost = lineTotal(regular);
-  const upcomingCost = days.slice(0, 7).reduce((s, d) => s + lineTotal(itemsOn(me, overrides[d], d)), 0);
+  const upcomingCost = days.slice(0, 7).reduce((s, d) => s + chargeableOn(me, overrides[d], d), 0);
   const daysLeft = dailyCost ? Math.floor(me.wallet / dailyCost) : 99;
   const hour = new Date().getHours();
   const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -56,6 +58,8 @@ export default function CustomerHome() {
   const locked = isLockedDate(selected);
   const notStarted = !!me.startDate && selected < me.startDate;
   const off = o?.status === "skipped" || o?.status === "vacation";
+  const oneOff = oneOffsOn(o);
+  const dispatched = useStore((s) => (stop ? routeDispatched(s, stop.routeId) : false));
   const rowIds = [...new Set([...plan.map((p) => p.productId), ...Object.keys(o?.qty ?? {})])];
   const qtyOf = (pid: string) => selItems.find((i) => i.productId === pid)?.qty ?? 0;
   const change = (pid: string, v: number) => explainEdit(setDayQty(selected, pid, v), selected);
@@ -159,6 +163,12 @@ export default function CustomerHome() {
                   })}
                 </div>
               )}
+              {!off && !notStarted && (oneOff.add.length > 0 || Object.keys(oneOff.free).length > 0) && (
+                <ul className="mt-3 space-y-1 rounded-xl bg-white p-3 text-sm">
+                  {oneOff.add.map((l) => <li key={`a${l.productId}`}><b>+{l.qty} × {productById[l.productId]!.name}</b> <span className="text-ink-soft">redelivery of an item that didn't arrive, charged when delivered</span></li>)}
+                  {Object.entries(oneOff.free).map(([pid, q]) => <li key={`f${pid}`}><b className="text-neem-deep">+{q} × {productById[pid]!.name}</b> <span className="text-ink-soft">free replacement, not charged</span></li>)}
+                </ul>
+              )}
               {!off && !locked && !notStarted && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {QUICK_ADD.map((id) => productById[id]!).filter((p) => !rowIds.includes(p.id)).slice(0, 4).map((p) => (
@@ -204,8 +214,8 @@ export default function CustomerHome() {
           {stop?.status === "held" && (
             <Card className="border border-brick/30 p-5">
               <p className="flex items-center gap-2 font-semibold text-brick"><AlertTriangle size={18} /> Today's milk is on hold</p>
-              <p className="mt-1 text-sm text-ink-soft">{stop.holdReason}. Add money and it goes straight back on this morning's van.</p>
-              <Button className="mt-3 w-full" onClick={() => { setTopUpAmount(Math.max(100, Math.ceil((lineTotal(stop.items) - me.wallet) / 100) * 100)); setTopUp(true); }}>Add {inr(Math.max(100, Math.ceil((lineTotal(stop.items) - me.wallet) / 100) * 100))}</Button>
+              <p className="mt-1 text-sm text-ink-soft">{stop.holdReason}. {stop.holdReason?.startsWith("Topped up") ? "" : dispatched ? "This morning's van has already left, so today's milk can't come now and you won't be charged for it. Top up before 10 PM for tomorrow." : "Add money before the van leaves the hub and it goes back into this morning's run."}</p>
+              {me.wallet < orderTotal(stop) && <Button className="mt-3 w-full" onClick={() => { setTopUpAmount(Math.max(100, Math.ceil((orderTotal(stop) - me.wallet) / 100) * 100)); setTopUp(true); }}>Add {inr(Math.max(100, Math.ceil((orderTotal(stop) - me.wallet) / 100) * 100))}</Button>}
             </Card>
           )}
           {stop && stop.status === "pending" && <OnTheVan stop={stop} />}

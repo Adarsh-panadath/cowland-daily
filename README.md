@@ -45,16 +45,20 @@ The prototype runs on a delivery-morning clock. It opens on "this morning", with
 
 ## Presentation walkthrough
 
-1. On the home page, pick **Harsul** in "Do we come to you?" and join the waitlist. It appears on the hub's **Demand** page.
-2. **Get started** → choose **Samarth Nagar** (Route 04, so Ganesh delivers it) → name and a new mobile number → code 1234 → address → 2 bottles of A2 milk, first delivery date, ₹1,000 demo top-up → create the account.
-3. In the milk diary, open the first delivery day and tap **+ Malai paneer**.
-4. Sign out. Sign in as hub staff → **Next delivery morning** (repeat until the first delivery day if you chose a later one).
-5. **Live routes** → Route 04 → **Route planner**: compare the current and suggested order, then **Apply to today's run**.
-6. Sign in as the rider → check the crate → deliver until the new household's door → **Problem** → **Item short or broken** → press − on the paneer → **Give the rest**.
-7. Sign in as the new customer: the chit shows the order ID, "0 of 1 × Malai paneer, not delivered, not charged" and ₹96 charged. Report the missing paneer.
-8. Sign in as hub staff → **Tickets**: the ticket shows the same order ID and that paneer was never charged, so a refund is blocked. Choose **Deliver the missing items on the next run**. The customer sees it on their next order and in Help, and the wallet reads ₹904.
+This is the connected journey used to verify the prototype (it runs end to end in a headless browser, customer and rider on a phone-sized screen).
 
-## Selling more on the same vans
+1. **Waitlist:** on the home page, pick **Harsul** in "Do we come to you?" and join. It appears on the hub's **Demand** page.
+2. **Sign up:** **Get started** → **Samarth Nagar** (Route 04, so the demo rider Ganesh delivers it) → name and a new mobile number → code 1234 → Mayur Park, flat C-201 → press + once for **3 bottles of A2 a day** → first delivery date → ₹1,000 demo top-up → create.
+3. **Change one day only:** in the milk diary open the first delivery day, press − once (2 bottles that day) and tap **+ Malai paneer**. "Your regular order" still says 3 a day.
+4. **Advance:** sign in as hub staff → **Next delivery morning**. Today's run has 2 × A2 + 1 × paneer for C-201.
+5. **Partial delivery:** sign in as the rider → check the crate → deliver until C-201 → press − on the paneer → **Delivered**. Exactly 2 × A2 is recorded and ₹96 charged; a ticket opens for the paneer.
+6. **Same numbers everywhere:** the customer's chit shows "0 of 1 × Malai paneer, not delivered, not charged" and ₹96; the hub ticket and the database show the same order ID and ₹96.
+7. **Complaint and refund:** as the customer, report a leaking bottle (1 × A2). The hub refunds ₹48 (the limit is the delivered, paid-for bottle).
+8. **Undo after a refund:** the rider opens **All homes** and undoes C-201. The wallet goes back to ₹1,000, not ₹1,048: the undo returns only the ₹48 still charged. The ledger keeps the debit, the refund and the reversal. Deliver again (paneer still short): one new ₹96 charge, wallet ₹904.
+9. **Redelivery:** the hub opens the paneer ticket. Refund is blocked (it was never paid for); choose **Deliver the missing items on the next run**.
+10. **Next morning:** **Next delivery morning**. Yesterday's order is kept under **Database → Orders → Earlier** with what was delivered and charged, and old tickets still open against it. Deliver C-201: the rider sees the paneer marked "missed last time"; ₹254 is charged (3 × A2 + the paneer), wallet ₹650. Refresh or switch apps: the database's integrity checks all pass.
+
+## Selling more on the same vans## Selling more on the same vans
 
 Four ideas for raising sales by making each morning's run work harder. None of them uses discounts.
 
@@ -67,12 +71,17 @@ Four ideas for raising sales by making each morning's run work harder. None of t
 
 The business rules live in `app/src/store/rules.ts` as plain functions, and the store (`app/src/store/useStore.ts`) uses them for every action.
 
-- Day changes are stored as absolute quantities per household and date, so "3 every day, 2 on Tuesday" works.
-- A regular-order change is a draft until Save, then applies from the first date that isn't locked.
-- Order IDs are fixed per household and date, so rebuilding a morning never creates duplicates.
-- Riders can deliver part of an order. Only what reached the door is charged, and the missing lines open a ticket automatically.
-- Every debit, refund and reversal is a ledger entry tied to its order. Undoing a delivery adds a reversal instead of deleting the charge, and clears the customer's "I've got my milk" confirmation.
-- A refund can never exceed what is still charged on the order, and only covers affected items that were delivered (and so paid for). A ticket with no order can credit at most ₹50 goodwill.
+- **Orders by date.** Day changes are stored as absolute quantities per household and date ("3 every day, 2 on Tuesday"). A regular-order change is a draft until Save, then applies from the first date that isn't locked. One-off redeliveries and free replacements are stored separately from the regular order and never change it.
+- **Order IDs and prices are fixed** per household and date. Each order stores the unit prices it was built with, so old charges never change if the catalogue does. Rebuilding a morning never creates duplicates.
+- **Delivery records exactly what was handed over.** Fewer than ordered: only what was given is charged and a shortage ticket opens. More than ordered: the extra comes from the van's spares (if any are left and the wallet covers it). Nothing handed over: a failed attempt, not a delivery.
+- **History is kept.** Moving to the next morning (or reopening the site on a new day) files this morning's orders under earlier orders. Tickets, receipts and refund limits always use the original order.
+- **Three kinds of money back, kept apart in the ledger:**
+  - *Refund*: compensation for a problem. Limited to the delivered, paid-for value of the ticket's items that hasn't already been refunded or replaced, and never more than is still charged on the order. A ticket with no order can credit at most ₹50 goodwill.
+  - *Reversal*: an undone delivery. It returns what is still charged after any refunds, so the same money is never returned twice. A ₹0 reversal is recorded when everything was already refunded, so the history shows the undo.
+  - *Free replacement*: for delivered, paid-for items that were defective. It rides on the next open delivery at no charge, linked to the ticket.
+- **Redeliveries** are for items that never arrived (and were never charged). They ride on the next open delivery and are charged only when delivered.
+- **Top-ups and held orders.** A held order goes back into this morning's run only if its van hasn't left the hub (Route 04: crate not yet loaded; other routes: no drop made yet). After that, the top-up covers the next delivery instead; today's held order stays off the van and uncharged, and the customer is told so. A payment never puts milk on a van that has left.
+- Every action is logged in the activity log, and the integrity checks on the database page are recalculated after every change.
 
 ## Route planner assumptions
 
@@ -92,6 +101,14 @@ The planner is illustrative. It needs map positions and travel times, and the pr
 - Sign-in is checked in the browser. A real launch needs server-side auth (SMS OTP, hashed PINs and passwords, sessions).
 - The day lock uses India Standard Time for the hour and the device's own calendar for the date, so it is correct for devices set to IST.
 
+## Known limitations
+
+- Only Route 04 has an interactive rider app; routes 01, 02, 03 and 05 move with the simulation.
+- The route planner minimises driving time on synthetic positions. It doesn't check van capacity, traffic or preferred drop times.
+- Stock is modelled only as "2 spares per item per van". There is no hub inventory, so a recovery after the van has left waits for the next run.
+- If a customer pauses the day a redelivery or replacement was booked on, that one-off is not moved to another day automatically.
+- Farm, product and lab details, the 98.4% on-time figure and the analytics history are illustrative or sample data.
+
 ## Not built (by choice)
 
 To keep the prototype focused, these suggestions from the implementation brief were left out: a dispatch queue for assigning orders to riders (the rider app always signs in as Route 04's rider; other routes move with the live simulation), stock and inventory tracking, paise-level accounting, and admin edits to a customer's confirmation after the fact.
@@ -104,7 +121,7 @@ npm test         # business-rule and store tests (Node's test runner, bundled wi
 npm run build    # type-check, tests, then build into the repo root
 ```
 
-The tests cover the regressions the brief listed: lowering one day below the regular plan, the draft plan editor and its effective date, the 10 PM IST lock at 9:59 and 10:00 across every entry point, undo leaving a reversal and clearing the confirmation, a new real day keeping the demo, new households acting as themselves, plus part delivery, bounded refunds, retries, held orders, van spares, held orders won back by a top-up, two tabs never overwriting each other, per-tab sign-in, the integrity checks after a busy morning, blocked clicks being logged, waitlist de-duplication, upgrading an older saved demo and route sequencing.
+`tests/review.test.ts` drives the real store actions for every issue in the code review: deliveries of 3 → 3, 2, 1 and 0, a mixed milk-and-paneer partial delivery, extras from the spares; delivery → undo, refund → undo, full refund → undo, refund → undo → redelivery, duplicate refund and duplicate undo; a ticket's refund limit before and after advancing the day and after a reload; redelivery vs free replacement through the next delivery, with receipt and wallet checks; and top-ups before loading, during the round and after handover. The other tests cover the regressions the first brief listed: lowering one day below the regular plan, the draft plan editor and its effective date, the 10 PM IST lock at 9:59 and 10:00 across every entry point, undo leaving a reversal and clearing the confirmation, a new real day keeping the demo, new households acting as themselves, plus part delivery, bounded refunds, retries, held orders, van spares, held orders won back by a top-up, two tabs never overwriting each other, per-tab sign-in, the integrity checks after a busy morning, blocked clicks being logged, waitlist de-duplication, upgrading an older saved demo and route sequencing.
 
 ## Stack
 

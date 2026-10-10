@@ -5,7 +5,7 @@ import { useStore } from "../../store/useStore";
 import { areas, WAITLIST_THRESHOLD } from "../../data/areas";
 import { productById, routes, societies } from "../../data/seed";
 import { extraMinutesFor, PLAN_ASSUMPTIONS } from "../../lib/routePlan";
-import { lineTotal } from "../../store/rules";
+import { orderTotal } from "../../store/rules";
 import { inr, num, timeAgo } from "../../lib/format";
 import { Badge, Button, Card, CardHead, Empty } from "../../components/ui";
 
@@ -24,7 +24,7 @@ export default function Demand() {
     for (const r of routes) {
       const onVan = stops.filter((x) => x.routeId === r.id && x.status !== "held");
       if (!onVan.length) continue;
-      const perHome = onVan.reduce((a, x) => a + lineTotal(x.items), 0) / onVan.length;
+      const perHome = onVan.reduce((a, x) => a + orderTotal(x), 0) / onVan.length;
       for (const soc of societies[r.id]!) {
         const homes = customers.filter((c) => c.routeId === r.id && c.society === soc && c.status === "active").length;
         rows.push({ society: soc, route: r.code, homes, minutes: extraMinutesFor(onVan, customers, soc, r.id), perHome, invites: shares.filter((x) => x.society === soc && x.routeId === r.id).length });

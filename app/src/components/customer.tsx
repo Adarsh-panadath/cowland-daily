@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { Check, CheckCircle2, Smartphone, CreditCard, Landmark } from "lucide-react";
 import { Button, Field, Modal, Stepper, inputCls } from "./ui";
-import { useStore, kindLabel, lineTotal } from "../store/useStore";
+import { useStore, kindLabel } from "../store/useStore";
+import { orderTotal, paidDeliveredQty, priceOf } from "../store/rules";
 import { productById, riderById, routeById, seedBatches } from "../data/seed";
 import type { ExceptionKind, Stop } from "../data/types";
 import { clock, inr } from "../lib/format";
@@ -18,7 +19,7 @@ export function Paavti({ stop, onReport }: { stop: Stop | undefined; onReport: (
   const delivered = stop.status === "delivered";
   const got = (pid: string) => (stop.delivered ? stop.delivered.find((d) => d.productId === pid)?.qty ?? 0 : null);
   const partial = delivered && stop.items.some((i) => (got(i.productId) ?? i.qty) < i.qty);
-  const total = delivered || stop.status === "issue" ? stop.charged ?? 0 : lineTotal(stop.items);
+  const total = delivered || stop.status === "issue" ? stop.charged ?? 0 : orderTotal(stop);
   return (
     <div className="relative">
       <div className="rounded-t-2xl bg-white p-5 shadow-lift">
@@ -42,13 +43,18 @@ export function Paavti({ stop, onReport }: { stop: Stop | undefined; onReport: (
             const p = productById[i.productId]!;
             const g = got(i.productId);
             const short = g !== null && g < i.qty;
+            const free = stop.free?.[i.productId] ?? 0;
+            const paidQty = g !== null ? paidDeliveredQty(stop, stop.delivered, i.productId) : Math.max(0, i.qty - free);
+            const redo = stop.links?.filter((l) => l.productId === i.productId && l.kind === "retry").reduce((n, l) => n + l.qty, 0) ?? 0;
             return (
               <li key={i.productId} className="flex items-baseline justify-between gap-3 text-sm">
                 <span>
                   <span className="font-semibold">{short ? `${g} of ${i.qty}` : i.qty} × {p.name}</span>
                   <span className={clsx("block text-xs", short ? "text-brick" : "text-ink-soft")}>{short ? `${i.qty - g} not delivered, not charged` : p.size}</span>
+                  {free > 0 && <span className="block text-xs font-semibold text-neem-deep">incl. {free} free replacement{free > 1 ? "s" : ""}, not charged</span>}
+                  {redo > 0 && <span className="block text-xs font-semibold text-marigold-deep">incl. {redo} redelivered from an earlier order</span>}
                 </span>
-                <span className="font-semibold tabular">{inr(p.price * (g ?? i.qty))}</span>
+                <span className="font-semibold tabular">{inr(priceOf(stop, i.productId) * paidQty)}</span>
               </li>
             );
           })}

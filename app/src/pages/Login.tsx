@@ -17,7 +17,7 @@ const tabs: { role: Role; label: string; icon: ReactNode }[] = [
 
 const copy: Record<Role, { title: string; sub: string }> = {
   customer: { title: "Sign in to plan your milk", sub: "We'll send a one-time code to your mobile number." },
-  rider: { title: "Start your dawn round", sub: "Use the rider ID on your badge and your 4-digit PIN." },
+  rider: { title: "Start your dawn round", sub: "Use the rider ID on your badge and your 4-digit PIN. In this demo the rider drives Route 04; the other routes are simulated." },
   admin: { title: "Hub team sign in", sub: "Use your Cowland work email and password." },
 };
 

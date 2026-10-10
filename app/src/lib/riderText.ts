@@ -66,6 +66,8 @@ const t = {
   restart: { en: "Start this round again (demo)", mr: "ही फेरी पुन्हा सुरू करा (डेमो)", hi: "यह राउंड फिर से शुरू करें (डेमो)" },
   restartSure: { en: "Undo every delivery on this round? Charges go back to the customers.", mr: "या फेरीतील सर्व डिलिव्हरी रद्द करायच्या? ग्राहकांचे पैसे परत जातील.", hi: "इस राउंड की सारी डिलीवरी रद्द करें? ग्राहकों के पैसे वापस जाएंगे." },
   restartYes: { en: "Yes, start again", mr: "हो, पुन्हा सुरू करा", hi: "हां, फिर से शुरू करें" },
+  freeRepl: { en: "free replacement", mr: "मोफत बदली", hi: "मुफ़्त बदली" },
+  redeliver: { en: "missed last time", mr: "मागच्या वेळी राहिलं", hi: "पिछली बार छूटा" },
   fromSpare: { en: "from spares", mr: "जास्तीच्या मालातून", hi: "अतिरिक्त माल से" },
   lockedLast: { en: "Door was locked last time. Call first.", mr: "मागच्या वेळी दार बंद होतं. आधी फोन करा.", hi: "पिछली बार दरवाज़ा बंद था. पहले फ़ोन करें." },
   gaveTitle: { en: "How many did you give?", mr: "किती दिलं?", hi: "कितना दिया?" },

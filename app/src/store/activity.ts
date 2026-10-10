@@ -89,7 +89,7 @@ export function describe(name: string, args: unknown[], b: Snap, a: Snap, r: unk
     }
     case "deliver": {
       const before = stopOf(args[0], b), after = stopOf(args[0], a);
-      if (!after || before?.status === after.status) return null;
+      if (!after || before?.status === after.status || after.status !== "delivered") return null;
       const short = after.items.filter((i) => (after.delivered?.find((d) => d.productId === i.productId)?.qty ?? 0) < i.qty);
       const extra = after.atDoor?.length && !before?.atDoor?.length ? `. Extra from van spares: ${items(after.atDoor)}` : "";
       return { actor, who: who(after), action: short.length ? "Part delivered" : "Delivered", detail: `${home(after)}${short.length ? `. Not delivered (not charged): ${items(short.map((i) => ({ productId: i.productId, qty: i.qty - (after.delivered?.find((d) => d.productId === i.productId)?.qty ?? 0) })))}` : ""}${extra}. ${after.bottlesCollected} empty bottle${after.bottlesCollected === 1 ? "" : "s"} back`, orderId: after.orderId, amount: -(after.charged ?? 0) };
@@ -102,17 +102,25 @@ export function describe(name: string, args: unknown[], b: Snap, a: Snap, r: unk
     case "undoStop": {
       const before = stopOf(args[0], b), after = stopOf(args[0], a);
       if (!before || !after || before.status === after.status) return null;
-      return { actor, who: who(after), action: "Undid a drop", detail: `${home(after)} is pending again${before.charged ? `, ₹${before.charged} reversed` : ""}`, orderId: after.orderId, amount: before.status === "delivered" ? before.charged ?? 0 : undefined };
+      const w0 = b.customers.find((c) => c.id === after.customerId)?.wallet ?? 0;
+      const w1 = a.customers.find((c) => c.id === after.customerId)?.wallet ?? 0;
+      return { actor, who: who(after), action: "Undid a drop", detail: `${home(after)} is pending again${w1 - w0 ? `, ₹${w1 - w0} reversed` : before.charged ? ", nothing left to reverse (already refunded)" : ""}`, orderId: after.orderId, amount: w1 - w0 || undefined };
     }
     case "resolve": {
       const ex = b.exceptions.find((e) => e.id === args[0]);
-      if (!ex || ex.status === "resolved") return null;
+      if (!ex) return null;
+      if (ex.status === "resolved") return { actor, who: who(), action: "Blocked", detail: "Ticket already resolved; no second refund", orderId: ex.orderId, blocked: true };
       return { actor, who: who(), action: "Resolved a ticket", detail: `${ex.kind}${r ? `, refunded ₹${r}` : ", no refund"}`, orderId: ex.orderId, amount: (r as number) || undefined };
     }
     case "scheduleRetry": {
-      if (!r) return null;
+      if (!r) return { actor, who: who(), action: "Blocked", detail: "Retry: nothing on this ticket is still undelivered", blocked: true };
       const ex = b.exceptions.find((e) => e.id === args[0]);
-      return { actor, who: who(), action: "Scheduled a retry", detail: `Missing items added to the ${day(r as string)} delivery, charged only on delivery`, orderId: ex?.orderId };
+      return { actor, who: who(), action: "Scheduled a redelivery", detail: `Missing items added to the ${day(r as string)} delivery, charged only on delivery`, orderId: ex?.orderId };
+    }
+    case "scheduleReplacement": {
+      if (!r) return { actor, who: who(), action: "Blocked", detail: "Replacement: nothing on this ticket was delivered and paid for, or it's already been compensated", blocked: true };
+      const ex = b.exceptions.find((e) => e.id === args[0]);
+      return { actor, who: who(), action: "Scheduled a free replacement", detail: `Added free to the ${day(r as string)} delivery`, orderId: ex?.orderId };
     }
     case "broadcast": return { actor, who: who(), action: "Messaged riders", detail: `"${String(args[0]).slice(0, 80)}"` };
     case "toggleCustomer": { const c = a.customers.find((x) => x.id === args[0]); return { actor, who: who(), action: c?.status === "paused" ? "Paused a household" : "Resumed a household", detail: c ? `${c.contact}, ${c.flat} ${c.society}` : "" }; }
