@@ -282,3 +282,33 @@ test("blocked clicks are logged as blocked, not silently dropped", () => {
   assert.match(S().events[0]!.detail, /locked/);
   mock.timers.reset();
 });
+
+test("rider gives more than ordered: extra comes from spares at normal price, capped by what's on the van", () => {
+  const stop = S().stops.find((s) => s.routeId === "r4" && s.status === "pending" && S().customers.find((c) => c.id === s.customerId)!.wallet > 2000)
+    ?? S().stops.find((s) => s.routeId === "r4" && s.status === "pending")!;
+  useStore.setState((s) => ({ customers: s.customers.map((c) => (c.id === stop.customerId ? { ...c, wallet: 5000 } : c)) }));
+  const line = stop.items[0]!;
+  const spare = sparesLeft(S().stops, "r4")[line.productId]!;
+  S().deliver(stop.id, 1, [{ productId: line.productId, qty: line.qty + 10 }, ...stop.items.slice(1)]);
+  const after = S().stops.find((s) => s.id === stop.id)!;
+  const given = after.delivered!.find((d) => d.productId === line.productId)!.qty;
+  assert.equal(given, line.qty + spare, "only the spares on the van can be handed over");
+  assert.equal(after.charged, lineTotal(after.delivered!));
+  assert.equal(sparesLeft(S().stops, "r4")[line.productId], 0);
+  S().undoStop(stop.id);
+  assert.equal(sparesLeft(S().stops, "r4")[line.productId], spare, "undo puts the extras back in the van");
+  assert.deepEqual(S().stops.find((s) => s.id === stop.id)!.items, stop.items, "and the order back to what was packed");
+});
+
+test("restart round reopens every drop and reverses every charge", () => {
+  const r4 = () => S().stops.filter((s) => s.routeId === "r4");
+  const pend = r4().filter((s) => s.status === "pending");
+  S().deliver(pend[0]!.id);
+  S().flagStop(pend[1]!.id, "access", "locked");
+  const reopened = S().restartRound("r4");
+  assert.ok(reopened >= 2);
+  assert.ok(r4().every((s) => s.status === "pending"));
+  const checks = integrityChecks({ customers: S().customers, stops: S().stops, txns: S().txns, opening: S().opening });
+  for (const c of checks) assert.ok(c.ok, `${c.label}: ${c.detail}`);
+  assert.equal(S().events[0]!.action, "Restarted the round (demo)");
+});

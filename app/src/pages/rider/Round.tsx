@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
-import { Check, Phone, MapPin, TriangleAlert, Volume2, Minus, Plus, DoorClosed, PackageX, Hand, MapPinOff, List, X, Undo2, Megaphone, PartyPopper, PackageCheck, Truck, Warehouse, Clock3, Recycle, Wallet } from "lucide-react";
-import { useStore, type RiderLang } from "../../store/useStore";
+import { Check, Phone, MapPin, TriangleAlert, Volume2, Minus, Plus, DoorClosed, PackageX, Hand, MapPinOff, List, X, Undo2, Megaphone, PartyPopper, PackageCheck, Truck, Warehouse, Clock3, Recycle, Wallet, RotateCcw } from "lucide-react";
+import { useStore, lineTotal, mergeItems, type RiderLang } from "../../store/useStore";
 import { productById, products } from "../../data/seed";
 import type { Customer, ExceptionKind, Stop } from "../../data/types";
 import { ProductArt } from "../../components/ProductArt";
@@ -63,6 +63,8 @@ export default function RiderRound() {
   const [listOpen, setListOpen] = useState(false);
   const [calling, setCalling] = useState<{ name: string; sub?: string } | null>(null);
   const [crateOpen, setCrateOpen] = useState(false);
+  const [restartOpen, setRestartOpen] = useState(false);
+  const restartRound = useStore((s) => s.restartRound);
   const shift = useStore((s) => s.shift);
   const advanceDay = useStore((s) => s.advanceDay);
 
@@ -99,11 +101,30 @@ export default function RiderRound() {
     window.speechSynthesis.speak(u);
   };
 
+  // What the rider is handing over at this door: starts at the order, − for short, + from the van's spares.
+  const [give, setGiveMap] = useState<Record<string, Record<string, number>>>({});
+  const giveOf = (pid: string, ordered: number) => (next ? give[next.id]?.[pid] ?? ordered : ordered);
+  const setGive = (pid: string, n: number) => next && setGiveMap((g) => ({ ...g, [next.id]: { ...g[next.id], [pid]: Math.max(0, n) } }));
+  const spareNow = useStore((s) => sparesLeft(s.stops, ROUTE));
+  const walletNow = c?.wallet ?? 0;
+  const canGiveMore = (pid: string, ordered: number) => {
+    if (!next) return false;
+    const g = giveOf(pid, ordered);
+    if (g < ordered) return true;
+    const extrasUsed = g - ordered;
+    if (extrasUsed >= Math.max(0, spareNow[pid] ?? 0)) return false;
+    const extras = next.items.map((i) => ({ productId: i.productId, qty: Math.max(0, giveOf(i.productId, i.qty) - i.qty) + (i.productId === pid ? 1 : 0) }));
+    return lineTotal(mergeItems(next.items, extras)) <= walletNow;
+  };
+  const bottleCount = next ? bottles[next.id] ?? next.bottlesDue : 0;
+
   const doDeliver = () => {
     if (!next) return;
     const id = next.id;
-    deliver(id, bottles[id] ?? next.bottlesDue);
-    toast(`✓ ${c!.flat}`, "good", { label: tr("undo", lang), run: () => undo(id) });
+    const given = next.items.map((i) => ({ productId: i.productId, qty: giveOf(i.productId, i.qty) }));
+    if (given.every((g) => g.qty === 0)) { setProblemFor(next); return; }
+    deliver(id, bottleCount, given);
+    toast(`✓ ${c!.flat} · ${bottleCount} ${tr("bottles", lang)}`, "good", { label: tr("undo", lang), run: () => { undo(id); setGiveMap((g) => { const n = { ...g }; delete n[id]; return n; }); } });
   };
 
   const maps = useMemo(() => (c ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${c.society}, ${c.area}, Chhatrapati Sambhajinagar`)}` : "#"), [c]);
@@ -163,17 +184,27 @@ export default function RiderRound() {
               <p className={clsx("mt-3 flex items-center gap-2 rounded-2xl bg-brick-soft px-3 py-2.5 font-bold text-brick", lang !== "en" && "font-mr")}><DoorClosed size={22} className="shrink-0" />{tr("lockedLast", lang)}</p>
             )}
 
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              {next.items.map((i) => (
-                <div key={i.productId} className="flex items-center gap-3 rounded-2xl bg-milk p-3">
-                  <ProductArt product={productById[i.productId]!} size={60} />
-                  <div className="min-w-0">
-                    <p className="font-display text-4xl font-bold leading-none">{i.qty}</p>
-                    <p className={clsx("line-clamp-2 text-sm leading-tight text-ink-soft", lang !== "en" && "font-mr")}>{itemName(i.productId, lang)}</p>
-                    {next.fromVan?.some((v) => v.productId === i.productId) && <span className={clsx("mt-1 inline-block rounded-full bg-marigold px-2 py-0.5 text-xs font-bold text-ink", lang !== "en" && "font-mr")}>+{next.fromVan.find((v) => v.productId === i.productId)!.qty} {tr("fromSpare", lang)}</span>}
+            <p className={clsx("mt-5 text-center font-semibold text-ink-3", lang !== "en" && "font-mr")}>{tr("handOver2", lang)}</p>
+            <div className="mt-2 space-y-3">
+              {next.items.map((i) => {
+                const g = giveOf(i.productId, i.qty);
+                const more = canGiveMore(i.productId, i.qty);
+                const bought = next.fromVan?.find((v) => v.productId === i.productId)?.qty ?? 0;
+                return (
+                  <div key={i.productId} className={clsx("flex items-center gap-2 rounded-2xl border-[3px] p-2.5", g < i.qty ? "border-brick bg-brick-soft/50" : g > i.qty ? "border-marigold bg-marigold-soft/60" : "border-transparent bg-milk")}>
+                    <ProductArt product={productById[i.productId]!} size={54} />
+                    <div className="min-w-0 flex-1">
+                      <p className={clsx("line-clamp-2 text-sm font-semibold leading-tight text-ink-3", lang !== "en" && "font-mr")}>{itemName(i.productId, lang)}</p>
+                      {g < i.qty && <p className={clsx("text-sm font-bold text-brick", lang !== "en" && "font-mr")}>{i.qty - g} {tr("short", lang)}</p>}
+                      {g > i.qty && <p className={clsx("text-sm font-bold text-marigold-deep", lang !== "en" && "font-mr")}>+{g - i.qty} {tr("fromSpare", lang)}</p>}
+                      {bought > 0 && g === i.qty && <p className={clsx("text-xs font-bold text-marigold-deep", lang !== "en" && "font-mr")}>+{bought} {tr("fromSpare", lang)}</p>}
+                    </div>
+                    <button aria-label={`One less ${productById[i.productId]!.name}`} disabled={g <= 0} onClick={() => setGive(i.productId, g - 1)} className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white text-ink active:scale-95 disabled:opacity-30"><Minus size={26} /></button>
+                    <span className="w-10 text-center font-display text-5xl font-bold tabular" aria-live="polite">{g}</span>
+                    <button aria-label={`One more ${productById[i.productId]!.name}`} disabled={!more} onClick={() => setGive(i.productId, g + 1)} className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white text-ink active:scale-95 disabled:opacity-30"><Plus size={26} /></button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="mt-4 flex items-start gap-3 rounded-2xl bg-[#FFF6DD] p-4">
@@ -185,16 +216,13 @@ export default function RiderRound() {
               )}
             </div>
 
-            {next.bottlesDue > 0 && (
-              <div className="mt-4 rounded-2xl border-2 border-milk-2 p-4">
-                <p className={clsx("text-center font-semibold text-ink-3", lang !== "en" && "font-mr")}>{tr("takeEmpty", lang)}</p>
-                <div className="mt-3 flex items-center justify-center gap-6">
-                  <button aria-label="One less bottle" onClick={() => setBottles((b) => ({ ...b, [next.id]: Math.max(0, (b[next.id] ?? next.bottlesDue) - 1) }))} className="grid h-16 w-16 place-items-center rounded-2xl bg-milk-2 text-ink active:scale-95"><Minus size={30} /></button>
-                  <span className="w-16 text-center font-display text-6xl font-bold tabular" aria-live="polite">{bottles[next.id] ?? next.bottlesDue}</span>
-                  <button aria-label="One more bottle" onClick={() => setBottles((b) => ({ ...b, [next.id]: Math.min(9, (b[next.id] ?? next.bottlesDue) + 1) }))} className="grid h-16 w-16 place-items-center rounded-2xl bg-milk-2 text-ink active:scale-95"><Plus size={30} /></button>
-                </div>
-              </div>
-            )}
+            <div className="mt-4 flex items-center gap-2 rounded-2xl border-2 border-dashed border-milk-3 p-2.5">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-neem-soft text-neem"><Recycle size={26} /></span>
+              <p className={clsx("min-w-0 flex-1 text-sm font-semibold leading-tight text-ink-3", lang !== "en" && "font-mr")}>{tr("takeEmpty", lang)}</p>
+              <button aria-label="One less bottle" disabled={bottleCount <= 0} onClick={() => setBottles((b) => ({ ...b, [next.id]: Math.max(0, bottleCount - 1) }))} className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-milk-2 text-ink active:scale-95 disabled:opacity-30"><Minus size={22} /></button>
+              <span className="w-8 text-center font-display text-3xl font-bold tabular" aria-live="polite">{bottleCount}</span>
+              <button aria-label="One more bottle" onClick={() => setBottles((b) => ({ ...b, [next.id]: Math.min(12, bottleCount + 1) }))} className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-milk-2 text-ink active:scale-95"><Plus size={22} /></button>
+            </div>
 
             <button onClick={doDeliver} className="mt-5 flex h-20 w-full items-center justify-center gap-3 rounded-2xl bg-neem text-2xl font-bold text-white shadow-lift active:scale-[.98]">
               <Check size={34} strokeWidth={3} /> {tr("delivered", lang)}
@@ -228,6 +256,19 @@ export default function RiderRound() {
         <button onClick={() => setListOpen(true)} className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-white font-bold shadow-sm"><List size={22} />{tr("allHomes", lang)}</button>
         <button onClick={() => setCalling({ name: "Samarth Nagar hub", sub: "Dispatch desk" })} className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-white font-bold shadow-sm"><Phone size={20} />{tr("helpLine", lang)}</button>
       </div>
+      {handled > 0 && (
+        <button onClick={() => setRestartOpen(true)} className={clsx("flex h-12 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-milk-3 font-semibold text-ink-3", lang !== "en" && "font-mr")}><RotateCcw size={18} />{tr("restart", lang)}</button>
+      )}
+      {restartOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/50 sm:items-center" role="dialog" aria-modal="true" aria-label={tr("restart", lang)}>
+          <div className="w-full max-w-lg animate-rise rounded-t-3xl bg-white p-5 sm:rounded-3xl">
+            <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-marigold-soft text-marigold-deep"><RotateCcw size={30} /></span>
+            <p className={clsx("mt-3 text-center text-lg font-semibold", lang !== "en" && "font-mr")}>{tr("restartSure", lang)}</p>
+            <button onClick={() => { restartRound(ROUTE); setGiveMap({}); setBottles({}); setRestartOpen(false); toast(tr("restart", lang), "info"); }} className={clsx("mt-4 h-16 w-full rounded-2xl bg-ink text-lg font-bold text-white", lang !== "en" && "font-mr")}>{tr("restartYes", lang)}</button>
+            <button onClick={() => setRestartOpen(false)} className="mt-3 h-14 w-full rounded-2xl bg-milk-2 text-lg font-bold">{tr("cancel", lang)}</button>
+          </div>
+        </div>
+      )}
 
       {/* Problem picker: tap only, no typing */}
       {problemFor && (

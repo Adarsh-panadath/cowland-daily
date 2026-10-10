@@ -101,6 +101,7 @@ interface State {
   flagStop: (stopId: string, kind: ExceptionKind, note: string) => void;
   setBottles: (stopId: string, n: number) => void;
   undoStop: (stopId: string) => void;
+  restartRound: (routeId: string) => number;
 
   // admin
   resolve: (exId: string, refund: number, resolution: string) => number;
@@ -434,11 +435,31 @@ export const useStore = create<State>()(
 
       /* ---------------- rider ---------------- */
 
+      /**
+       * Mark a stop delivered with what was actually handed over. Fewer than ordered: the rest is
+       * listed as short and not charged. More than ordered: the extra comes from the van's spares
+       * (only as many as are left, and only if the wallet covers it), at the normal price.
+       */
       deliver: (stopId, bottles, deliveredItems) =>
         set((s) => {
-          const stop = s.stops.find((x) => x.id === stopId);
-          if (!stop || stop.status === "delivered" || stop.status === "held") return {};
-          const delivered = deliveredItems ?? stop.items.map((i) => ({ ...i }));
+          const found = s.stops.find((x) => x.id === stopId);
+          if (!found || found.status === "delivered" || found.status === "held") return {};
+          let stop = found;
+          const given = (deliveredItems ?? found.items).filter((i) => i.qty > 0).map((i) => ({ ...i }));
+          // extras beyond the order come out of the spares
+          const left = sparesLeft(s.stops, found.routeId);
+          const wallet = s.customers.find((c) => c.id === found.customerId)!.wallet;
+          const extras: LineItem[] = [];
+          for (const g of given) {
+            const ordered = found.items.find((i) => i.productId === g.productId)?.qty ?? 0;
+            let extra = Math.max(0, g.qty - ordered);
+            extra = Math.min(extra, Math.max(0, left[g.productId] ?? 0));
+            while (extra > 0 && lineTotal(mergeItems(found.items, [...extras, { productId: g.productId, qty: extra }])) > wallet) extra--;
+            g.qty = ordered + extra;
+            if (extra) extras.push({ productId: g.productId, qty: extra });
+          }
+          if (extras.length) stop = { ...found, items: mergeItems(found.items, extras), fromVan: mergeItems(found.fromVan ?? [], extras), atDoor: mergeItems(found.atDoor ?? [], extras) };
+          const delivered = given;
           const amount = lineTotal(delivered);
           const missing = shortLines(stop.items, delivered);
           const cust = s.customers.find((c) => c.id === stop.customerId)!;
@@ -448,7 +469,7 @@ export const useStore = create<State>()(
             : [];
           return {
             stops: s.stops.map((x) =>
-              x.id === stopId ? { ...x, status: "delivered", at: nextAt(s.stops, stop.routeId), bottlesCollected: bottles ?? x.bottlesDue, issueNote: missing.length ? "Partly delivered" : undefined, delivered, charged: amount, confirmed: false, confirmedAt: undefined } : x,
+              x.id === stopId ? { ...stop, status: "delivered", at: nextAt(s.stops, stop.routeId), bottlesCollected: bottles ?? x.bottlesDue, issueNote: missing.length ? "Partly delivered" : undefined, delivered, charged: amount, confirmed: false, confirmedAt: undefined } : x,
             ),
             customers: s.customers.map((c) => (c.id === stop.customerId ? { ...c, wallet: c.wallet - amount } : c)),
             txns: amount ? ledger(s.txns, [{ id: uid("t"), customerId: stop.customerId, at: demoNow().toISOString(), kind: "debit", amount, note: missing.length ? "Delivery, part order" : "Daily delivery", orderId: stop.orderId }]) : s.txns,
@@ -487,13 +508,22 @@ export const useStore = create<State>()(
           if (!stop || (stop.status !== "delivered" && stop.status !== "issue")) return {};
           const back = stop.status === "delivered" ? stop.charged ?? 0 : 0;
           return {
-            stops: s.stops.map((x) => (x.id === stopId ? { ...x, status: "pending", at: undefined, bottlesCollected: 0, issueNote: undefined, delivered: undefined, charged: undefined, confirmed: false, confirmedAt: undefined } : x)),
+            // extras handed over at the door go back into the van's spares
+            stops: s.stops.map((x) => (x.id === stopId ? { ...x, items: shortLines(x.items, x.atDoor ?? []), fromVan: shortLines(x.fromVan ?? [], x.atDoor ?? []), atDoor: undefined, status: "pending", at: undefined, bottlesCollected: 0, issueNote: undefined, delivered: undefined, charged: undefined, confirmed: false, confirmedAt: undefined } : x)),
             customers: back ? s.customers.map((c) => (c.id === stop.customerId ? { ...c, wallet: c.wallet + back } : c)) : s.customers,
             txns: back ? ledger(s.txns, [{ id: uid("t"), customerId: stop.customerId, at: demoNow().toISOString(), kind: "refund", amount: back, note: "Delivery undone by rider (reversal)", orderId: stop.orderId }]) : s.txns,
             // rider-raised tickets for this order no longer apply once the stop is reopened
             exceptions: s.exceptions.filter((e) => !(e.orderId === stop.orderId && e.source === "rider" && e.status === "open")),
           };
         }),
+
+      /** Demo helper: reopen every drop on a route (each one reversed like an undo) and start the round again. */
+      restartRound: (routeId) => {
+        const done = get().stops.filter((x) => x.routeId === routeId && (x.status === "delivered" || x.status === "issue"));
+        for (const x of done) get().undoStop(x.id);
+        set((s) => ({ shift: { ...s.shift, handedOverAt: null, returnedBottles: null } }));
+        return done.length;
+      },
 
       /* ---------------- admin ---------------- */
 

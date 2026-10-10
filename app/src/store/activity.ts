@@ -27,7 +27,7 @@ const prod = (id: string) => productById[id]?.name ?? id;
 const riderOf = (routeId: string) => riderById[routeById[routeId]?.riderId ?? ""]?.name ?? "Rider";
 
 const CUSTOMER = new Set(["setDayStatus", "setDayQty", "setVacation", "savePlan", "topUp", "checkout", "reportIssue", "confirmReceived", "signup", "buyFromVan", "updateDropNote", "shareInvite", "joinWaitlist"]);
-const RIDER = new Set(["deliver", "flagStop", "undoStop", "confirmLoad", "handover"]);
+const RIDER = new Set(["deliver", "flagStop", "undoStop", "confirmLoad", "handover", "restartRound"]);
 
 export function describe(name: string, args: unknown[], b: Snap, a: Snap, r: unknown, inTick: boolean): Omit<ActivityEvent, "id" | "at" | "day"> | null {
   const me = a.customers.find((c) => c.id === a.meId) ?? b.customers.find((c) => c.id === b.meId);
@@ -91,7 +91,8 @@ export function describe(name: string, args: unknown[], b: Snap, a: Snap, r: unk
       const before = stopOf(args[0], b), after = stopOf(args[0], a);
       if (!after || before?.status === after.status) return null;
       const short = after.items.filter((i) => (after.delivered?.find((d) => d.productId === i.productId)?.qty ?? 0) < i.qty);
-      return { actor, who: who(after), action: short.length ? "Part delivered" : "Delivered", detail: `${home(after)}${short.length ? `. Not delivered (not charged): ${items(short.map((i) => ({ productId: i.productId, qty: i.qty - (after.delivered?.find((d) => d.productId === i.productId)?.qty ?? 0) })))}` : ""}`, orderId: after.orderId, amount: -(after.charged ?? 0) };
+      const extra = after.atDoor?.length && !before?.atDoor?.length ? `. Extra from van spares: ${items(after.atDoor)}` : "";
+      return { actor, who: who(after), action: short.length ? "Part delivered" : "Delivered", detail: `${home(after)}${short.length ? `. Not delivered (not charged): ${items(short.map((i) => ({ productId: i.productId, qty: i.qty - (after.delivered?.find((d) => d.productId === i.productId)?.qty ?? 0) })))}` : ""}${extra}. ${after.bottlesCollected} empty bottle${after.bottlesCollected === 1 ? "" : "s"} back`, orderId: after.orderId, amount: -(after.charged ?? 0) };
     }
     case "flagStop": {
       const after = stopOf(args[0], a);
@@ -125,6 +126,7 @@ export function describe(name: string, args: unknown[], b: Snap, a: Snap, r: unk
     case "remindLowBalances": return { actor, who: who(), action: "Sent top-up reminders", detail: `${(args[0] as string[]).length} households` };
     case "confirmLoad": return { actor, who: riderOf("r4"), action: "Loaded the crate", detail: (args[0] as string[]).length ? `Short: ${(args[0] as string[]).map(prod).join(", ")}` : "Everything on board" };
     case "handover": return { actor, who: riderOf("r4"), action: "Handed over at the hub", detail: `${args[0]} empty bottles returned` };
+    case "restartRound": return { actor, who: riderOf(args[0] as string), action: "Restarted the round (demo)", detail: `Route ${routeById[args[0] as string]?.code}: ${r} drop${r === 1 ? "" : "s"} reopened, charges reversed` };
     case "reset": return { actor: "system", who: "Demo", action: "Reset demo data", detail: "Back to the first demo morning" };
     default: return null;
   }

@@ -1,9 +1,11 @@
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
-import { CheckCircle2, XCircle, Download, ExternalLink, Search, Database, ChevronDown } from "lucide-react";
+import { CheckCircle2, XCircle, Download, ExternalLink, Search, Database, ChevronDown, RotateCcw } from "lucide-react";
 import { Logo } from "../components/Logo";
-import { Badge, Button, Card, Segmented, inputCls } from "../components/ui";
+import { Badge, Button, Card, Modal, Segmented, inputCls } from "../components/ui";
+import { toast } from "../store/toast";
+import { Toaster } from "../components/layout/AppShell";
 import { useStore, useToday, lineTotal } from "../store/useStore";
 import { integrityChecks, netCharged } from "../store/rules";
 import { productById, routeById } from "../data/seed";
@@ -30,6 +32,7 @@ export default function DataPage() {
   const [route, setRoute] = useState("all");
   const [open, setOpen] = useState<string | null>(null);
   const [more, setMore] = useState(1);
+  const [resetOpen, setResetOpen] = useState(false);
   const checks = useMemo(() => integrityChecks({ customers: s.customers, stops: s.stops, txns: s.txns, opening: s.opening }), [s.customers, s.stops, s.txns, s.opening]);
   const passing = checks.filter((c) => c.ok).length;
   const cust = (id: string) => s.customers.find((c) => c.id === id);
@@ -72,7 +75,10 @@ export default function DataPage() {
               Delivery morning <b className="text-ink">{dayMonth(today)}</b> · last change {s.events[0] ? clock(s.events[0].at) : "—"}
             </p>
           </div>
-          <Button variant="outline" icon={<Download size={16} />} onClick={exportJson}>Export JSON</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" icon={<RotateCcw size={16} />} onClick={() => setResetOpen(true)}>Reset demo data</Button>
+            <Button variant="outline" icon={<Download size={16} />} onClick={exportJson}>Export JSON</Button>
+          </div>
         </div>
 
         <Card className="p-5">
@@ -243,7 +249,13 @@ export default function DataPage() {
           );
         })()}
 
-        <p className="pb-6 text-xs text-ink-soft">This is a browser-only demo database (saved in this browser's local storage). Tabs in this browser share it; other browsers and devices have their own copy. Reset it from the account menu in any app.</p>
+        <Modal open={resetOpen} onClose={() => setResetOpen(false)} title="Reset all demo data?"
+          footer={<><Button variant="ghost" onClick={() => setResetOpen(false)}>Keep my data</Button><Button variant="danger" onClick={() => { useStore.getState().reset(); setResetOpen(false); toast("Demo data reset. Back to the first demo morning.", "info"); }}>Reset everything</Button></>}>
+          <p className="text-sm text-ink-soft">This clears every delivery, order change, ticket, new household and waitlist entry made in this browser, and goes back to the first demo morning. Open tabs update straight away. Anyone signed in as a new household will need to sign in again.</p>
+        </Modal>
+        <Toaster />
+
+        <p className="pb-6 text-xs text-ink-soft">This is a browser-only demo database (saved in this browser's local storage). Tabs in this browser share it; other browsers and devices have their own copy. Reset it with the button above or from the account menu in any app.</p>
       </main>
     </div>
   );

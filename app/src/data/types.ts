@@ -96,6 +96,7 @@ export interface Stop {
   charged?: number; // amount debited for this order (after reversals)
   holdReason?: string;
   fromVan?: LineItem[]; // spares bought from the van this morning (already included in items)
+  atDoor?: LineItem[]; // extras the rider handed over at the door from the spares (part of fromVan)
   releasedAt?: string; // when a held order went back on the van after a top-up
 }
 
