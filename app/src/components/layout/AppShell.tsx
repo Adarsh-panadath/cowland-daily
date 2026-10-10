@@ -3,7 +3,7 @@ import { NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
   Bell, CalendarDays, ShoppingBasket, Wallet, ReceiptText, LifeBuoy, Route as RouteIcon, BarChart3,
-  LayoutDashboard, Users, TriangleAlert, FlaskConical, RotateCcw, Truck, X, CheckCircle2, Info, LogOut, ChevronDown, ChartNoAxesCombined, MapPinned } from "lucide-react";
+  LayoutDashboard, Users, TriangleAlert, FlaskConical, RotateCcw, Truck, X, CheckCircle2, Info, LogOut, ChevronDown, ChartNoAxesCombined, MapPinned, Database } from "lucide-react";
 import { useStore, useAccount } from "../../store/useStore";
 import { accounts } from "../../lib/auth";
 import { toast, useToast } from "../../store/toast";
@@ -48,7 +48,8 @@ function useSimulation() {
   const tick = useStore((s) => s.tick);
   useEffect(() => {
     if (!simOn) return;
-    const t = setInterval(tick, 2200);
+    // only the tab you're looking at drives the simulation
+    const t = setInterval(() => { if (!document.hidden) tick(); }, 2200);
     return () => clearInterval(t);
   }, [simOn, tick]);
 }
@@ -116,6 +117,9 @@ function AccountMenu({ role }: { role: Role }) {
               <p className="mt-1 truncate text-xs text-ink-3">{role === "customer" ? `+91 ${acc.id}` : role === "rider" ? `Rider ID ${acc.id}` : acc.id}</p>
             </div>
           </div>
+          <a role="menuitem" href="#/data" target="_blank" rel="noreferrer" onClick={() => setOpen(false)} className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-ink hover:bg-milk">
+            <Database size={16} className="text-ink-soft" /> Open demo database
+          </a>
           {confirmReset ? (
             <div className="mt-1 rounded-xl border border-brick/30 p-3">
               <p className="text-sm font-semibold text-ink">Reset all demo data?</p>
@@ -261,6 +265,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           )}
           <p className="px-1 text-xs leading-relaxed text-white/50">Prototype with sample data. Changes are saved in this browser.</p>
+          <a href="#/data" target="_blank" rel="noreferrer" className="mt-2 flex items-center gap-2 rounded-xl px-1 py-1.5 text-sm font-semibold text-marigold hover:underline"><Database size={15} /> Demo database</a>
           <button onClick={() => { signOut(); go("/login?role=" + role, { replace: true }); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-white/70 hover:bg-white/[.07] hover:text-white">
             <LogOut size={16} /> Sign out
           </button>

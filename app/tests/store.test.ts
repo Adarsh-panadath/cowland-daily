@@ -2,7 +2,7 @@ import "./setup";
 import { test, mock, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { useStore } from "../src/store/useStore";
-import { lineTotal, netCharged, refundableOn, sparesLeft } from "../src/store/rules";
+import { integrityChecks, lineTotal, netCharged, refundableOn, sparesLeft } from "../src/store/rules";
 import { ME } from "../src/data/seed";
 import { addDays, dayKey, firstEditableDate, fromKey, todayKey, tomorrowKey } from "../src/lib/format";
 
@@ -219,4 +219,66 @@ test("updated drop instructions are saved for the rider", () => {
   assert.ok(me.dropNoteAt);
   S().shareInvite();
   assert.equal(S().shares.at(-1)!.society, me.society);
+});
+
+test("two tabs: an action in one tab never overwrites what another tab saved", () => {
+  const pending = S().stops.filter((s) => s.routeId === "r4" && s.status === "pending");
+  const [a, b] = [pending[0]!, pending[1]!];
+  // another tab (say the rider's) delivers stop A and saves
+  const raw = JSON.parse(localStorage.getItem("cowland-daily-demo")!);
+  raw.state.stops = raw.state.stops.map((x: { id: string }) => (x.id === a.id ? { ...x, status: "delivered", at: new Date().toISOString(), charged: 0, delivered: [] } : x));
+  localStorage.setItem("cowland-daily-demo", JSON.stringify(raw));
+  // this tab (say the hub's, with an older copy in memory) now acts
+  S().deliver(b.id);
+  const saved = JSON.parse(localStorage.getItem("cowland-daily-demo")!).state.stops as { id: string; status: string }[];
+  assert.equal(saved.find((x) => x.id === a.id)!.status, "delivered", "the other tab's delivery survived");
+  assert.equal(saved.find((x) => x.id === b.id)!.status, "delivered");
+});
+
+test("sign-in belongs to the tab, not the shared data", () => {
+  S().signIn("rider");
+  const saved = JSON.parse(localStorage.getItem("cowland-daily-demo")!).state;
+  assert.equal(saved.session, undefined);
+  assert.equal(JSON.parse(sessionStorage.getItem("cowland-tab-session")!).session, "rider");
+});
+
+test("after a busy morning every integrity check still passes and every click is logged", () => {
+  const id = newHousehold();
+  const first = firstEditableDate();
+  S().setDayQty(first, "paneer", 1);
+  while (todayKey() < first) S().advanceDay();
+  const st = () => S().stops.find((s) => s.customerId === id)!;
+  S().buyFromVan(Object.keys(sparesLeft(S().stops, st().routeId))[0]!);
+  S().deliver(st().id, 2, st().items.filter((i) => i.productId !== "paneer"));
+  S().undoStop(st().id);
+  S().deliver(st().id, 2, st().items.filter((i) => i.productId !== "paneer"));
+  S().reportIssue("leak", "", [{ productId: "a2", qty: 1 }]);
+  S().resolve(S().exceptions[0]!.id, 9999, "refund");
+  const auto = S().exceptions.find((e) => e.orderId === st().orderId && e.source === "rider")!;
+  S().scheduleRetry(auto.id);
+  S().topUp(300, "UPI");
+  for (let i = 0; i < 30; i++) S().tick();
+  const others = S().stops.filter((s) => s.routeId === "r4" && s.status === "pending");
+  for (const o of others.slice(0, 3)) S().deliver(o.id);
+  S().undoStop(others[0]!.id);
+  S().flagStop(others[0]!.id, "access", "Door locked");
+
+  const checks = integrityChecks({ customers: S().customers, stops: S().stops, txns: S().txns, opening: S().opening });
+  for (const c of checks) assert.ok(c.ok, `${c.label}: ${c.detail}`);
+
+  const ev = S().events;
+  assert.ok(ev.some((e) => e.action === "Signed up" && e.who === "Kavita Joshi"));
+  assert.ok(ev.some((e) => e.action === "Part delivered" && e.orderId === st().orderId && e.amount === -st().charged!));
+  assert.ok(ev.some((e) => e.action === "Undid a drop" && e.amount === st().charged));
+  assert.ok(ev.some((e) => e.action === "Delivered" && e.actor === "simulation"));
+  assert.ok(ev.some((e) => e.action === "Couldn't deliver" && e.actor === "rider"));
+});
+
+test("blocked clicks are logged as blocked, not silently dropped", () => {
+  mock.timers.enable({ apis: ["Date"], now: IST("2026-10-09T22:30:00") });
+  S().reset();
+  S().setDayQty(tomorrowKey(), "a2", 1);
+  assert.equal(S().events[0]!.action, "Blocked");
+  assert.match(S().events[0]!.detail, /locked/);
+  mock.timers.reset();
 });

@@ -21,6 +21,20 @@ Each portal has its own sign-in at `/#/login`. The demo details are pre-filled.
 
 New households sign up at `/#/join` (or **Get started** / **Start delivery here** on the home page). No SMS is sent; the code is always 1234.
 
+## Demo database
+
+Open `/#/data` (also linked from every sign-in page, the sidebar and the account menu) in its own tab. It shows everything the prototype has saved, live:
+
+- **Activity**: every click as a plain-English line (who, what, which order, wallet effect), including clicks the rules refused, such as a change after the 10 PM lock.
+- **Orders** for the current delivery morning, with each order's activity, ledger entries and tickets.
+- **Ledger, Households, Tickets, Waitlist**: the raw records.
+- **Integrity checks**, recalculated after every change: every wallet equals its opening balance plus the ledger, nobody pays for what they didn't get, each delivery is charged once, one order per household per day, spares never oversold, refunds never exceed payments, held orders stay off the van.
+- **Export JSON** downloads the whole database.
+
+### Several tabs at once
+
+All tabs in one browser share one copy of the data. Each action first loads anything another tab saved, so a hub tab running the simulation can't overwrite a rider's deliveries, and other tabs refresh the moment anything changes. Sign-in belongs to each tab, so you can keep the customer, rider and hub apps open side by side. The simulation only runs in the tab you're looking at.
+
 ## The demo clock
 
 The prototype runs on a delivery-morning clock. It opens on "this morning", with some routes part-way through.
@@ -74,13 +88,13 @@ The planner is illustrative. It needs map positions and travel times, and the pr
 
 - Customers, orders, ticket history, analytics history (120 days), lab results and the seeded waitlist are **generated sample data**. Pages label this ("Sample history", "Sample lab data", "Illustrative funnel", "Scenario estimates", "Sample" suggestions). The waitlist's 60-home bar for a new route is an illustrative number.
 - Payments, OTPs, calls and SMS are simulated and say so. No money moves.
-- Everything is saved in this browser only (localStorage). Two tabs or two devices don't sync.
+- Everything is saved in this browser only (localStorage). Tabs in the same browser stay in sync; other browsers and devices have their own copy.
 - Sign-in is checked in the browser. A real launch needs server-side auth (SMS OTP, hashed PINs and passwords, sessions).
 - The day lock uses India Standard Time for the hour and the device's own calendar for the date, so it is correct for devices set to IST.
 
 ## Not built (by choice)
 
-To keep the prototype focused, these suggestions from the implementation brief were left out: a dispatch queue for assigning orders to riders (the rider app always signs in as Route 04's rider; other routes move with the live simulation), stock and inventory tracking, paise-level accounting, admin edits to a customer's confirmation after the fact, and multi-tab sync.
+To keep the prototype focused, these suggestions from the implementation brief were left out: a dispatch queue for assigning orders to riders (the rider app always signs in as Route 04's rider; other routes move with the live simulation), stock and inventory tracking, paise-level accounting, and admin edits to a customer's confirmation after the fact.
 
 ## Tests
 
@@ -90,7 +104,7 @@ npm test         # business-rule and store tests (Node's test runner, bundled wi
 npm run build    # type-check, tests, then build into the repo root
 ```
 
-The tests cover the regressions the brief listed: lowering one day below the regular plan, the draft plan editor and its effective date, the 10 PM IST lock at 9:59 and 10:00 across every entry point, undo leaving a reversal and clearing the confirmation, a new real day keeping the demo, new households acting as themselves, plus part delivery, bounded refunds, retries, held orders, van spares, held orders won back by a top-up, waitlist de-duplication, upgrading an older saved demo and route sequencing.
+The tests cover the regressions the brief listed: lowering one day below the regular plan, the draft plan editor and its effective date, the 10 PM IST lock at 9:59 and 10:00 across every entry point, undo leaving a reversal and clearing the confirmation, a new real day keeping the demo, new households acting as themselves, plus part delivery, bounded refunds, retries, held orders, van spares, held orders won back by a top-up, two tabs never overwriting each other, per-tab sign-in, the integrity checks after a busy morning, blocked clicks being logged, waitlist de-duplication, upgrading an older saved demo and route sequencing.
 
 ## Stack
 

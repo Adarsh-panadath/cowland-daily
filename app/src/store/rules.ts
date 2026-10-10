@@ -149,3 +149,56 @@ export function vanSalesValue(stops: Stop[]) {
   }
   return { sold, onTheWay, units };
 }
+
+/* ---------- integrity checks shown on the demo database page ---------- */
+
+export interface Check { id: string; label: string; ok: boolean; detail: string }
+
+/**
+ * Checks that must always hold if every click did exactly what it should.
+ * `opening` is each household's wallet when the demo started (or when it signed up).
+ */
+export function integrityChecks(d: { customers: Customer[]; stops: Stop[]; txns: Txn[]; opening: Record<string, number> }): Check[] {
+  const out: Check[] = [];
+  const name = (id: string) => d.customers.find((c) => c.id === id)?.contact ?? id;
+
+  // 1. wallets: opening balance + every movement in the ledger = balance now
+  const moved = new Map<string, number>();
+  for (const t of d.txns) if (t.live) moved.set(t.customerId, (moved.get(t.customerId) ?? 0) + (t.kind === "debit" ? -t.amount : t.amount));
+  const off = d.customers.filter((c) => (d.opening[c.id] ?? c.wallet) + (moved.get(c.id) ?? 0) !== c.wallet);
+  out.push({ id: "wallets", label: "Every wallet matches its ledger", ok: off.length === 0, detail: off.length ? `${off.length} don't match: ${off.slice(0, 3).map((c) => name(c.id)).join(", ")}` : `${d.customers.length} wallets = opening balance + top-ups + refunds − charges` });
+
+  // 2. nobody pays for what didn't reach them
+  const over = d.stops.filter((s) => netCharged(s.orderId, d.txns) > lineTotal(s.status === "delivered" ? s.delivered ?? s.items : []));
+  out.push({ id: "paid-for", label: "Nobody pays for milk they didn't get", ok: over.length === 0, detail: over.length ? `${over.length} orders charged above what was delivered` : `${d.stops.length} orders: charge ≤ value delivered` });
+
+  // 3. each delivery charged once (undo leaves a matching reversal)
+  const delivered = d.stops.filter((s) => s.status === "delivered");
+  const twice = delivered.filter((s) => {
+    let n = 0;
+    for (const t of d.txns) if (t.orderId === s.orderId) n += t.kind === "debit" ? t.amount : t.note.startsWith("Delivery undone") ? -t.amount : 0;
+    return n !== (s.charged ?? 0);
+  });
+  out.push({ id: "once", label: "Each delivery is charged exactly once", ok: twice.length === 0, detail: twice.length ? `${twice.length} orders don't match their charge` : `${delivered.length} delivered orders, one net charge each` });
+
+  // 4. one order per household per day
+  const seen = new Set<string>();
+  let dup = 0;
+  for (const s of d.stops) { const k = `${s.customerId}|${s.date}`; if (seen.has(k)) dup++; seen.add(k); }
+  out.push({ id: "one-order", label: "One order per household per day", ok: dup === 0, detail: dup ? `${dup} duplicate orders` : `${seen.size} households, ${d.stops.length} orders` });
+
+  // 5. spares
+  const routesOn = [...new Set(d.stops.map((s) => s.routeId))];
+  const oversold = routesOn.flatMap((r) => Object.entries(sparesLeft(d.stops, r)).filter(([, n]) => n < 0).map(([p]) => `${r}:${p}`));
+  out.push({ id: "spares", label: "Spares sold never exceed what the van carried", ok: oversold.length === 0, detail: oversold.length ? `Oversold: ${oversold.join(", ")}` : `${SPARES_PER_ITEM} spares of each item per van` });
+
+  // 6. refunds bounded
+  const neg = [...new Set(d.txns.filter((t) => t.orderId).map((t) => t.orderId!))].filter((o) => netCharged(o, d.txns) < 0);
+  out.push({ id: "refunds", label: "Refunds never exceed what was paid", ok: neg.length === 0, detail: neg.length ? `${neg.length} orders refunded above their charge` : "Every order's refunds ≤ its charge" });
+
+  // 7. held orders
+  const badHeld = d.stops.filter((s) => s.status === "held" && (s.delivered?.length || netCharged(s.orderId, d.txns) !== 0));
+  out.push({ id: "held", label: "Held orders stay off the van and uncharged", ok: badHeld.length === 0, detail: `${d.stops.filter((s) => s.status === "held").length} held right now` });
+
+  return out;
+}

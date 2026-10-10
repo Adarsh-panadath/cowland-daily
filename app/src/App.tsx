@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import type { Role } from "./data/types";
 import Landing from "./pages/Landing";
 import Join from "./pages/Join";
+import DataPage from "./pages/DataPage";
 import CustomerHome from "./pages/customer/Home";
 import Shop from "./pages/customer/Shop";
 import WalletPage from "./pages/customer/Wallet";
@@ -32,6 +33,7 @@ export default function App() {
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/join" element={<Join />} />
+      <Route path="/data" element={<DataPage />} />
       <Route path="/customer" element={shell("customer", <CustomerHome />)} />
       <Route path="/customer/shop" element={shell("customer", <Shop />)} />
       <Route path="/customer/wallet" element={shell("customer", <WalletPage />)} />

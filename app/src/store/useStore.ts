@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { Customer, DayOverride, DayStatus, Exception, ExceptionKind, LineItem, Notice, Role, Share, Stop, Txn, WaitEntry } from "../data/types";
+import type { ActivityEvent, Customer, DayOverride, DayStatus, Exception, ExceptionKind, LineItem, Notice, Role, Share, Stop, Txn, WaitEntry } from "../data/types";
+import { describe, makeEvent, simSpares, type Snap } from "./activity";
 import { ME, productById, routeById, seedCustomers, seedExceptions, seedNotices, seedStops, seedTxns, seedWaitlist } from "../data/seed";
 import { accounts, type DemoAccount } from "../lib/auth";
 import { addDays, dayKey, demoAt, demoNow, firstEditableDate, fromKey, isLockedDate, setDemoOffset, todayKey, uid } from "../lib/format";
@@ -62,6 +63,8 @@ interface State {
   overrides: Record<string, Record<string, DayOverride>>; // customerId -> date -> changes
   waitlist: WaitEntry[];
   shares: Share[];
+  events: ActivityEvent[]; // activity log, newest first
+  opening: Record<string, number>; // each wallet when the demo started or the household signed up
   nextSeq: Record<string, number>; // customerId -> stop number, waiting for the next morning's run
   cart: LineItem[];
   simOn: boolean;
@@ -165,6 +168,8 @@ const fresh = () => {
     } as Record<string, Record<string, DayOverride>>,
     waitlist: structuredClone(seedWaitlist),
     shares: [] as Share[],
+    events: [makeEvent({ actor: "system", who: "Demo", action: "Demo started", detail: "Sample data loaded for this morning. Every click from here is logged." })] as ActivityEvent[],
+    opening: Object.fromEntries(seedCustomers.map((c) => [c.id, c.wallet])) as Record<string, number>,
     nextSeq: {} as Record<string, number>,
     cart: [] as LineItem[],
     simOn: false,
@@ -185,13 +190,68 @@ function nextAt(stops: Stop[], routeId: string) {
 }
 
 const notice = (role: Role, text: string, tone: Notice["tone"] = "info"): Notice => ({ id: uid("n"), role, text, at: new Date().toISOString(), read: false, tone });
-const MAX_TXNS = 2500;
-const ledger = (txns: Txn[], add: Txn[]) => [...add, ...txns].slice(0, MAX_TXNS);
+const MAX_TXNS = 5000;
+/** New money movements are marked live, so wallets can be checked against the ledger. */
+const ledger = (txns: Txn[], add: Txn[]) => [...add.map((t) => ({ ...t, live: true })), ...txns].slice(0, MAX_TXNS);
+
+/* ---------- one shared copy of the data across tabs ---------- */
+
+const KEY = "cowland-daily-demo";
+const TAB_KEY = "cowland-tab-session";
+let lastSynced: string | null = null; // what this tab last read from or wrote to storage
+
+const tabStorage = {
+  getItem: (k: string) => { try { const v = localStorage.getItem(k); lastSynced = v; return v; } catch { return null; } },
+  setItem: (k: string, v: string) => { try { localStorage.setItem(k, v); lastSynced = v; } catch { /* storage full or blocked: keep working in memory */ } },
+  removeItem: (k: string) => { try { localStorage.removeItem(k); } catch { /* ignore */ } },
+};
+
+/** If another tab has saved since this tab last looked, load that first so nothing is overwritten. */
+export function pullLatest() {
+  let v: string | null = null;
+  try { v = localStorage.getItem(KEY); } catch { return; }
+  if (v !== null && v !== lastSynced) void useStore.persist.rehydrate();
+}
+
+/** Actions too small to log (typing, toggles, reading notifications). */
+const QUIET = new Set(["setRole", "signOut", "cartAdd", "cartClear", "markRead", "toggleLoadItem", "setRiderLang", "togglePlanned", "setAutoTopUp", "setBottles"]);
+let depth = 0;
+let inTick = false;
+
+/** Every action starts from the latest saved data, and leaves a line in the activity log. */
+function synced<T extends object>(set: (p: Partial<State> | ((s: State) => Partial<State>)) => void, get: () => State, actions: T): T {
+  return Object.fromEntries(
+    Object.entries(actions).map(([k, v]) => {
+      if (typeof v !== "function") return [k, v];
+      const fn = v as (...x: unknown[]) => unknown;
+      return [k, (...a: unknown[]) => {
+        if (depth === 0) pullLatest();
+        const before = get();
+        depth++;
+        if (k === "tick" && depth === 1) inTick = true;
+        let r: unknown;
+        try { r = fn(...a); } finally { depth--; }
+        const after = get();
+        const lines = QUIET.has(k) ? [] : k === "tick" ? simSpares(before as unknown as Snap, after as unknown as Snap) : [describe(k, a, before as unknown as Snap, after as unknown as Snap, r, inTick)].filter((x) => x !== null);
+        if (depth === 0) inTick = false;
+        if (lines.length) set((s) => ({ events: [...lines.map((l) => makeEvent(l!)), ...s.events].slice(0, 800) }));
+        return r;
+      }];
+    }),
+  ) as T;
+}
+
+/** Who is signed in belongs to this tab only, so a rider tab and a hub tab can sit side by side. */
+type TabSession = { session: Role | null; role: Role; meId: string };
+function loadTabSession(): Partial<TabSession> {
+  try { return JSON.parse(sessionStorage.getItem(TAB_KEY) || "{}") as Partial<TabSession>; } catch { return {}; }
+}
 
 export const useStore = create<State>()(
   persist(
-    (set, get) => ({
+    (set, get) => synced(set, get, {
       ...fresh(),
+      ...loadTabSession(),
 
       setRole: (role) => set({ role }),
       signIn: (role, customerId) => set((s) => ({ session: role, role, meId: role === "customer" ? customerId ?? s.meId : s.meId })),
@@ -315,6 +375,7 @@ export const useStore = create<State>()(
         };
         set({
           customers: [...s.customers, c],
+          opening: { ...s.opening, [id]: 0 },
           meId: id,
           session: "customer",
           role: "customer",
@@ -551,7 +612,7 @@ export const useStore = create<State>()(
       sendOffer: (id) =>
         set((s) => ({
           offers: { ...s.offers, [id]: new Date().toISOString() },
-          notices: id === s.meId ? [notice("customer", "A gift from Cowland: your next top-up of ₹1,000 or more comes with a free bottle of A2 milk.", "good"), ...s.notices] : s.notices,
+          notices: id === s.meId ? [notice("customer", "We noticed a few missed mornings. Reply here or call the hub and we'll sort out your delivery time or drop spot.", "info"), ...s.notices] : s.notices,
         })),
       remindLowBalances: (ids) =>
         set((s) => ({
@@ -596,14 +657,15 @@ export const useStore = create<State>()(
 
       markRead: (role) => set((s) => ({ notices: s.notices.map((n) => (n.role === role ? { ...n, read: true } : n)) })),
 
-      reset: () => set({ ...fresh(), role: get().role, session: get().session === "customer" ? null : get().session, riderLang: get().riderLang }),
+      reset: () => set({ ...fresh(), role: get().role, session: get().session === "customer" ? null : get().session, meId: ME, riderLang: get().riderLang }),
     }),
     {
-      name: "cowland-daily-demo",
-      version: 5,
-      storage: createJSONStorage(() => localStorage),
+      name: KEY,
+      version: 6,
+      storage: createJSONStorage(() => tabStorage),
+      // sign-in, basket and the simulation switch stay with the tab; everything else is shared
       partialize: (s) => {
-        const { simOn: _simOn, ...rest } = s;
+        const { simOn: _a, session: _b, role: _c, meId: _d, cart: _e, ...rest } = s;
         return rest;
       },
       // Older saved demos are upgraded instead of wiped.
@@ -620,9 +682,19 @@ export const useStore = create<State>()(
             mine[date] = { status: o.status, qty: Object.keys(qty).length ? qty : undefined };
           }
           const keep = { customers: p.customers, exceptions: p.exceptions, notices: p.notices, autoTopUp: p.autoTopUp, offers: p.offers, planned: p.planned, riderLang: p.riderLang };
-          return { ...base, ...Object.fromEntries(Object.entries(keep).filter(([, v]) => v !== undefined)), overrides: { [ME]: mine } };
+          const { simOn: _a, session: _b, role: _c, meId: _d, cart: _e, ...shared } = { ...base, ...Object.fromEntries(Object.entries(keep).filter(([, v]) => v !== undefined)), overrides: { [ME]: mine } };
+          // kept customers may have different balances from the fresh seed
+          shared.opening = Object.fromEntries(shared.customers.map((c) => [c.id, c.wallet]));
+          return shared;
         }
-        return p;
+        // v5 saved the sign-in with the shared data; it now belongs to each tab
+        const { session: _b, role: _c, meId: _d, cart: _e, ...shared } = p;
+        if (version < 6) {
+          // wallet checks start from the balances saved at the upgrade
+          shared.opening = Object.fromEntries(((shared.customers as Customer[] | undefined) ?? []).map((c) => [c.id, c.wallet]));
+          shared.events = [makeEvent({ actor: "system", who: "Demo", action: "Saved demo upgraded", detail: "Your earlier changes were kept. The activity log starts here." })];
+        }
+        return shared;
       },
       onRehydrateStorage: () => (state) => {
         if (!state) return;
@@ -637,6 +709,16 @@ export const useStore = create<State>()(
     },
   ),
 );
+
+// Save this tab's sign-in, and follow other tabs' changes as they happen.
+useStore.subscribe((s, prev) => {
+  if (s.session !== prev.session || s.meId !== prev.meId || s.role !== prev.role) {
+    try { sessionStorage.setItem(TAB_KEY, JSON.stringify({ session: s.session, role: s.role, meId: s.meId })); } catch { /* ignore */ }
+  }
+});
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => { if (e.key === KEY) pullLatest(); });
+}
 
 /* ---------- selectors ---------- */
 

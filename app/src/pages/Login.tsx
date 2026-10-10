@@ -92,6 +92,7 @@ export default function Login() {
           </div>
 
           <DemoAccounts role={role} onFill={() => setFill((n) => n + 1)} />
+          <p className="mt-4 text-center text-sm text-ink-soft"><a href="#/data" target="_blank" rel="noreferrer" className="font-semibold text-ink underline decoration-marigold decoration-2 underline-offset-2">Open the demo database</a> in another tab to watch every click land.</p>
         </div>
       </main>
     </div>

@@ -4,7 +4,7 @@ import {
   Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer,
   Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis, AreaChart, LabelList,
 } from "recharts";
-import { ArrowDownRight, ArrowUpRight, Download, Info, Phone, Gift, Table2, LineChart as LineIcon } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Download, Info, Phone, Table2, LineChart as LineIcon, MessageSquare } from "lucide-react";
 import { routes, routeById } from "../../data/seed";
 import {
   dayRows, allDates, productGroups, routeEconomics, ECON, cohorts, scoreCustomers, segmentColors, funnel, movingAvg, sum,
@@ -553,8 +553,8 @@ function CustomersTab() {
                     <td className="px-5 py-2.5 text-right">
                       <div className="inline-flex gap-1">
                         {offers[x.c.id]
-                          ? <span className="inline-flex h-8 items-center rounded-lg bg-neem-soft px-2 text-xs font-semibold text-neem-deep">Offer sent</span>
-                          : <button aria-label={`Send an offer to ${x.c.contact}`} title="Send a free-bottle offer" onClick={() => { sendOffer(x.c.id); toast(`Offer sent to ${x.c.contact}: a free bottle with their next top-up.`); }} className="grid h-8 w-8 place-items-center rounded-lg bg-marigold-soft text-marigold-deep hover:bg-marigold hover:text-ink"><Gift size={15} /></button>}
+                          ? <span className="inline-flex h-8 items-center rounded-lg bg-neem-soft px-2 text-xs font-semibold text-neem-deep">Message sent</span>
+                          : <button aria-label={`Send a check-in message to ${x.c.contact}`} title="Send a check-in message" onClick={() => { sendOffer(x.c.id); toast(`Check-in message sent to ${x.c.contact}.`); }} className="grid h-8 w-8 place-items-center rounded-lg bg-marigold-soft text-marigold-deep hover:bg-marigold hover:text-ink"><MessageSquare size={15} /></button>}
                         <button aria-label={`Call ${x.c.contact}`} title="Call" onClick={() => setCalling({ name: x.c.contact, sub: `${x.c.flat}, ${x.c.society}` })} className="grid h-8 w-8 place-items-center rounded-lg bg-milk-2 text-ink hover:bg-milk-3"><Phone size={15} /></button>
                       </div>
                     </td>

@@ -124,6 +124,7 @@ export interface Txn {
   amount: number;
   note: string;
   orderId?: string;
+  live?: boolean; // created during the demo (seed history is already in opening balances)
 }
 
 export interface Batch {
@@ -165,4 +166,20 @@ export interface Share {
   society: string;
   routeId: string;
   at: string;
+}
+
+export type Actor = "customer" | "rider" | "hub" | "simulation" | "system";
+
+/** One line in the demo's activity log: who did what, and what it did to money. */
+export interface ActivityEvent {
+  id: string;
+  at: string; // real clock time of the click
+  day: string; // demo delivery date it happened on
+  actor: Actor;
+  who: string;
+  action: string;
+  detail: string;
+  orderId?: string;
+  amount?: number; // wallet effect: + money in, − money out
+  blocked?: boolean; // the rules refused it (locked day, paused day, sold out…)
 }
